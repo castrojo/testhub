@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-local.sh — build a flatpak app using the gnome-49 container and push to local registry
+# build-local.sh — build a flatpak app and push to local or ghcr.io registry
 # Usage:
 #   build-local.sh [app]              # build + push to ghcr.io
 #   LOCAL_ONLY=1 build-local.sh [app] # build + local registry only (no ghcr push)
@@ -11,16 +11,27 @@ MANIFEST="flatpaks/${APP}/manifest.yaml"
 CONTAINER_IMAGE="ghcr.io/flathub-infra/flatpak-github-actions:gnome-49"
 LOCAL_ONLY="${LOCAL_ONLY:-0}"
 
+# Validate manifest exists before doing anything
+if [[ ! -f "${MANIFEST}" ]]; then
+  echo "ERROR: manifest not found: ${MANIFEST}" >&2
+  echo "  Expected: flatpaks/<appname>/manifest.yaml" >&2
+  exit 1
+fi
+
 # Resolve app-id from manifest
 APP_ID=$(python3 -c "
 import sys
-# Simple YAML key extraction without PyYAML dependency
 for line in open(sys.argv[1]):
     line = line.strip()
     if line.startswith('app-id:'):
         print(line.split(':', 1)[1].strip())
         break
 " "${MANIFEST}")
+
+if [[ -z "${APP_ID}" ]]; then
+  echo "ERROR: could not determine app-id from ${MANIFEST}" >&2
+  exit 1
+fi
 
 ARCH=$(uname -m)
 BRANCH="stable"
@@ -29,35 +40,60 @@ BUILD_DIR=".build-dir"
 OSTREE_REPO=".ostree-repo"
 OCI_DIR=".${APP}.oci"
 
+echo "==> app:     ${APP}"
 echo "==> app-id:  ${APP_ID}"
 echo "==> ref:     ${REF}"
 echo "==> image:   ${CONTAINER_IMAGE}"
+echo "==> mode:    $([ "${LOCAL_ONLY}" = "1" ] && echo LOCAL_ONLY || echo full)"
 
-# Ensure container image is present
-podman pull "${CONTAINER_IMAGE}"
+# Ensure container image is present — skip pull if already cached
+if ! podman image exists "${CONTAINER_IMAGE}"; then
+  echo "==> Pulling build container..."
+  podman pull "${CONTAINER_IMAGE}"
+else
+  echo "==> Build container already cached, skipping pull."
+fi
 
 # Run flatpak-builder inside the container
 # --privileged needed for ostree/fuse operations; --disable-rofiles-fuse avoids fuse requirement
+# --force-clean is always required: empties .build-dir before build (not the OCI export dir)
+# SOURCE_DATE_EPOCH=0 + --override-source-date-epoch: makes OSTree commit timestamps
+# deterministic, which in turn makes OCI blob hashes stable across identical-content runs.
+# --disable-download (LOCAL_ONLY only): skip source re-fetch when .flatpak-builder/downloads/
+# cache is warm — eliminates the git-lfs network round-trip on every loop iteration.
+FLATPAK_BUILDER_FLAGS=(
+  --disable-rofiles-fuse
+  --force-clean
+  --override-source-date-epoch=0
+  --repo="${OSTREE_REPO}"
+)
+if [[ "${LOCAL_ONLY}" == "1" ]]; then
+  FLATPAK_BUILDER_FLAGS+=(--disable-download)
+fi
+
 podman run --rm \
   --privileged \
   -v "$(pwd):/workspace:z" \
   -w /workspace \
+  -e SOURCE_DATE_EPOCH=0 \
   "${CONTAINER_IMAGE}" \
   flatpak-builder \
-    --disable-rofiles-fuse \
-    --force-clean \
-    --repo="${OSTREE_REPO}" \
+    "${FLATPAK_BUILDER_FLAGS[@]}" \
     "${BUILD_DIR}" \
     "${MANIFEST}"
 
 echo "==> Build complete. Exporting OCI image..."
 rm -rf "${OCI_DIR}"
 
-# Export from OSTree repo to OCI Image Layout
+# SOURCE_DATE_EPOCH=0 normalises tar timestamps in the OCI layer, making blob
+# hashes deterministic across runs with identical content. Without this,
+# flatpak build-bundle --oci produces a new blob hash every run even when the
+# app content is unchanged, breaking CI layer caching and user delta updates.
 podman run --rm \
   --privileged \
   -v "$(pwd):/workspace:z" \
   -w /workspace \
+  -e SOURCE_DATE_EPOCH=0 \
   "${CONTAINER_IMAGE}" \
   flatpak build-bundle \
     --oci \
