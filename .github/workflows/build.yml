@@ -117,15 +117,8 @@ jobs:
       - name: Export OCI bundle (flatpak-builder path)
         if: steps.detect-path.outputs.mode == 'flatpak-builder'
         run: |
-          APP_ID=$(python3 -c "
-          import sys
-          for line in open(sys.argv[1]):
-              line = line.strip()
-              if line.startswith('app-id:'):
-                  print(line.split(':', 1)[1].strip())
-                  break
-          " "flatpaks/${{ matrix.app }}/manifest.yaml")
-          [[ -n "${APP_ID}" ]] || { echo "ERROR: could not determine app-id" >&2; exit 1; }
+          APP_ID=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('flatpaks/${{ matrix.app }}/manifest.yaml')); print(d['app-id'])")
+          [[ -n "${APP_ID}" && "${APP_ID}" != "null" ]] || { echo "ERROR: could not determine app-id" >&2; exit 1; }
           echo "==> Exporting OCI for ${APP_ID} (arch: ${{ matrix.arch }}, branch: stable)"
           # OSTree repo is at ./repo (action hardcodes localRepoName='repo')
           # NAME = app-id only (not a full ref path); BRANCH = stable; --arch sets target arch
@@ -140,42 +133,18 @@ jobs:
         if: steps.detect-path.outputs.mode == 'bundle-repack'
         run: |
           DESC="flatpaks/${{ matrix.app }}/release.yaml"
-          APP_ID=$(python3 -c "
-          import sys
-          for line in open(sys.argv[1]):
-              line = line.strip()
-              if line.startswith('app-id:'):
-                  print(line.split(':', 1)[1].strip())
-                  break
-          " "${DESC}")
-          VERSION=$(python3 -c "
-          import sys
-          for line in open(sys.argv[1]):
-              line = line.strip()
-              if line.startswith('version:'):
-                  print(line.split(':', 1)[1].strip())
-                  break
-          " "${DESC}")
-          URL=$(python3 -c "
-          import sys
-          for line in open(sys.argv[1]):
-              line = line.strip()
-              if line.startswith('url:'):
-                  print(line.split(':', 1)[1].strip())
-                  break
-          " "${DESC}")
-          EXPECTED_SHA=$(python3 -c "
-          import sys
-          for line in open(sys.argv[1]):
-              line = line.strip()
-              if line.startswith('sha256:'):
-                  print(line.split(':', 1)[1].strip())
-                  break
-          " "${DESC}")
-          [[ -n "${APP_ID}" && -n "${VERSION}" && -n "${URL}" && -n "${EXPECTED_SHA}" ]] \
+          APP_ID=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['app-id'])")
+          VERSION=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['version'])")
+          URL=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['url'])")
+          EXPECTED_SHA=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['sha256'])")
+          [[ -n "${APP_ID}" && "${APP_ID}" != "null" \
+          && -n "${VERSION}" && "${VERSION}" != "null" \
+          && -n "${URL}" && "${URL}" != "null" \
+          && -n "${EXPECTED_SHA}" && "${EXPECTED_SHA}" != "null" ]] \
             || { echo "ERROR: release.yaml missing required fields" >&2; exit 1; }
           echo "APP_ID=${APP_ID}" >> "$GITHUB_ENV"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "UPSTREAM_URL=${URL}" >> "$GITHUB_ENV"
           BUNDLE_FILE="/tmp/${{ matrix.app }}-${VERSION}.flatpak"
           echo "BUNDLE_FILE=${BUNDLE_FILE}" >> "$GITHUB_ENV"
           echo "==> Downloading ${URL}"
@@ -227,6 +196,23 @@ jobs:
         with:
           extra-squeeze: "true"
 
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Read release metadata (bundle-repack apps only)
+        run: |
+          # GITHUB_ENV is job-scoped — VERSION/UPSTREAM_URL written by the build job are not
+          # available here. Re-derive them from release.yaml if this is a bundle-repack app.
+          DESC="flatpaks/${{ matrix.app }}/release.yaml"
+          if [[ -f "${DESC}" ]]; then
+            VERSION=$(yq '.version' "${DESC}")
+            URL=$(yq '.url' "${DESC}")
+            echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+            echo "UPSTREAM_URL=${URL}" >> "$GITHUB_ENV"
+            echo "==> Bundle-repack: VERSION=${VERSION}"
+          else
+            echo "==> Flatpak-builder app — VERSION/UPSTREAM_URL not set"
+          fi
+
       - name: Download OCI artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -242,6 +228,25 @@ jobs:
           # --quiet: image ID only, no progress noise
           IMAGE_ID=$(podman pull --quiet "oci:./${APP}.oci")
           echo "==> Single-layer image: ${IMAGE_ID}"
+          # Apply OCI standard labels before chunkah — labels added after CHUNKAH_CONFIG_STR are lost
+          CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          buildah config \
+            --label "org.opencontainers.image.version=${VERSION:-}" \
+            --label "org.opencontainers.image.source=${UPSTREAM_URL:-}" \
+            --label "org.opencontainers.image.created=${CREATED}" \
+            --label "org.opencontainers.image.vendor=castrojo" \
+            --label "org.opencontainers.image.url=https://github.com/castrojo/jorgehub" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            "${IMAGE_ID}"
+          if [[ -n "${VERSION:-}" ]]; then
+            TITLE=$(yq '.title // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            DESCRIPTION=$(yq '.description // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            LICENSE=$(yq '.license // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${TITLE}" && "${TITLE}" != "null" ]] && buildah config --label "org.opencontainers.image.title=${TITLE}" "${IMAGE_ID}" || true
+            [[ -n "${DESCRIPTION}" && "${DESCRIPTION}" != "null" ]] && buildah config --label "org.opencontainers.image.description=${DESCRIPTION}" "${IMAGE_ID}" || true
+            [[ -n "${LICENSE}" && "${LICENSE}" != "null" ]] && buildah config --label "org.opencontainers.image.licenses=${LICENSE}" "${IMAGE_ID}" || true
+          fi
+          echo "==> OCI labels applied"
           podman pull "${CHUNKAH_IMAGE}"
           # Preserve image config (labels etc.) across chunkah round-trip
           export CHUNKAH_CONFIG_STR
@@ -275,19 +280,33 @@ jobs:
           TAG="latest-${{ matrix.arch }}"
           TARGET="ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${TAG}"
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+            podman login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
           podman push \
             --compression-format=zstd:chunked \
             --digestfile /tmp/digest.txt \
             "${CHUNKED_ID}" "docker://${TARGET}"
           DIGEST=$(cat /tmp/digest.txt)
           echo "==> Pushed ${TARGET} @ ${DIGEST} — layers: ${LAYER_COUNT}"
+          # Version and stable tags — only for bundle-repack apps (VERSION set in GITHUB_ENV)
+          if [[ -n "${VERSION:-}" ]]; then
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              skopeo login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            skopeo copy \
+              --compression-format=zstd:chunked \
+              "containers-storage:${CHUNKED_ID}" \
+              "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${VERSION}-${{ matrix.arch }}"
+            skopeo copy \
+              --compression-format=zstd:chunked \
+              "containers-storage:${CHUNKED_ID}" \
+              "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:stable-${{ matrix.arch }}"
+            echo "==> Tags: latest-${{ matrix.arch }}, ${VERSION}-${{ matrix.arch }}, stable-${{ matrix.arch }}"
+          fi
 
       - name: Login to ghcr.io for skopeo inspect
         run: |
           # skopeo does not inherit podman's login session — explicit login required
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+            skopeo login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
 
       - name: Verify labels on ghcr.io
         run: |
@@ -298,7 +317,7 @@ jobs:
           import json, sys
           d = json.load(sys.stdin)
           labels = d.get('Labels', {})
-          for k in ['org.flatpak.ref', 'org.flatpak.metadata']:
+          for k in ['org.flatpak.ref', 'org.flatpak.metadata', 'org.opencontainers.image.created']:
               s = 'OK' if k in labels else 'MISSING'
               print(f'{s}: {k}')
               if s == 'MISSING': sys.exit(1)

@@ -1,0 +1,182 @@
+name: Backfill Version Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App name (directory under flatpaks/)'
+        required: true
+      version:
+        description: 'Version tag to push (e.g. v1.25.3)'
+        required: true
+      url:
+        description: 'Direct download URL of the .flatpak bundle'
+        required: true
+      sha256:
+        description: 'Expected sha256 of the .flatpak bundle'
+        required: true
+
+permissions: {}
+
+jobs:
+
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        arch: [x86_64]
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      options: --privileged
+    env:
+      SOURCE_DATE_EPOCH: "0"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download and verify upstream bundle
+        run: |
+          DESC="flatpaks/${{ inputs.app }}/release.yaml"
+          [[ -f "${DESC}" ]] || { echo "ERROR: ${DESC} not found; backfill is for bundle-repack apps only" >&2; exit 1; }
+          APP_ID=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['app-id'])")
+          [[ -n "${APP_ID}" && "${APP_ID}" != "null" ]] || { echo "ERROR: could not read app-id from ${DESC}" >&2; exit 1; }
+          echo "APP_ID=${APP_ID}" >> "$GITHUB_ENV"
+          BUNDLE_FILE="/tmp/${{ inputs.app }}-${{ inputs.version }}.flatpak"
+          echo "==> Downloading ${{ inputs.url }}"
+          curl -fsSL -o "${BUNDLE_FILE}" "${{ inputs.url }}"
+          ACTUAL_SHA=$(sha256sum "${BUNDLE_FILE}" | cut -d' ' -f1)
+          if [[ "${ACTUAL_SHA}" != "${{ inputs.sha256 }}" ]]; then
+            echo "ERROR: sha256 mismatch" >&2
+            echo "  expected: ${{ inputs.sha256 }}" >&2
+            echo "  actual:   ${ACTUAL_SHA}" >&2
+            exit 1
+          fi
+          echo "==> sha256 OK"
+          echo "BUNDLE_FILE=${BUNDLE_FILE}" >> "$GITHUB_ENV"
+
+      - name: Import bundle and export OCI
+        run: |
+          ARCH="${{ matrix.arch }}"
+          REF="app/${APP_ID}/${ARCH}/stable"
+          echo "==> Importing ${BUNDLE_FILE} → OSTree ref ${REF}"
+          flatpak build-import-bundle --ref="${REF}" repo "${BUNDLE_FILE}"
+          echo "==> Exporting OCI bundle"
+          flatpak build-bundle --oci --arch="${ARCH}" repo "${{ inputs.app }}.oci" "${APP_ID}" stable
+
+      - name: Upload OCI artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oci-${{ inputs.app }}-${{ matrix.arch }}
+          path: ${{ inputs.app }}.oci/
+          retention-days: 1
+
+  push:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      matrix:
+        arch: [x86_64]
+    steps:
+      - uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6 # v9
+        with:
+          extra-squeeze: "true"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download OCI artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oci-${{ inputs.app }}-${{ matrix.arch }}
+          path: ${{ inputs.app }}.oci
+
+      - name: Split layers with chunkah and apply OCI labels
+        env:
+          CHUNKAH_IMAGE: quay.io/jlebon/chunkah:v0.2.0
+        run: |
+          IMAGE_ID=$(podman pull --quiet "oci:./${{ inputs.app }}.oci")
+          echo "==> Single-layer image: ${IMAGE_ID}"
+          CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          buildah config \
+            --label "org.opencontainers.image.version=${{ inputs.version }}" \
+            --label "org.opencontainers.image.source=${{ inputs.url }}" \
+            --label "org.opencontainers.image.created=${CREATED}" \
+            --label "org.opencontainers.image.vendor=castrojo" \
+            --label "org.opencontainers.image.url=https://github.com/castrojo/jorgehub" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            "${IMAGE_ID}"
+          DESC="flatpaks/${{ inputs.app }}/release.yaml"
+          TITLE=$(yq '.title // ""' "${DESC}")
+          DESCRIPTION=$(yq '.description // ""' "${DESC}")
+          LICENSE=$(yq '.license // ""' "${DESC}")
+          [[ -n "${TITLE}" && "${TITLE}" != "null" ]] && buildah config --label "org.opencontainers.image.title=${TITLE}" "${IMAGE_ID}" || true
+          [[ -n "${DESCRIPTION}" && "${DESCRIPTION}" != "null" ]] && buildah config --label "org.opencontainers.image.description=${DESCRIPTION}" "${IMAGE_ID}" || true
+          [[ -n "${LICENSE}" && "${LICENSE}" != "null" ]] && buildah config --label "org.opencontainers.image.licenses=${LICENSE}" "${IMAGE_ID}" || true
+          echo "==> OCI labels applied"
+          podman pull "${CHUNKAH_IMAGE}"
+          export CHUNKAH_CONFIG_STR
+          CHUNKAH_CONFIG_STR=$(podman inspect "${IMAGE_ID}" | jq -c '.[0]')
+          echo "==> Running chunkah"
+          podman run --rm \
+            --mount=type=image,src="${IMAGE_ID}",dest=/chunkah \
+            -e CHUNKAH_CONFIG_STR \
+            "${CHUNKAH_IMAGE}" build \
+            > /tmp/${{ inputs.app }}-chunked.ociarchive
+          CHUNKED_ID=$(podman load < /tmp/${{ inputs.app }}-chunked.ociarchive \
+            | grep 'Loaded image:' | grep -oP '(?<=sha256:)[a-f0-9]+')
+          echo "==> Chunked image: ${CHUNKED_ID}"
+          podman inspect "${CHUNKED_ID}" \
+            | jq -e '.[0].Config.Labels["org.flatpak.ref"] // error("MISSING: org.flatpak.ref")' \
+            > /dev/null && echo "==> Flatpak labels OK"
+          LAYER_COUNT=$(podman inspect "${CHUNKED_ID}" | jq '.[0].RootFS.Layers | length')
+          echo "==> Layer count: ${LAYER_COUNT}"
+          echo "CHUNKED_ID=${CHUNKED_ID}" >> "$GITHUB_ENV"
+          echo "LAYER_COUNT=${LAYER_COUNT}" >> "$GITHUB_ENV"
+
+      - name: Push version tag to ghcr.io
+        run: |
+          TAG="${{ inputs.version }}-${{ matrix.arch }}"
+          TARGET="ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${TAG}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            podman login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+          podman push \
+            --compression-format=zstd:chunked \
+            --digestfile /tmp/digest.txt \
+            "${CHUNKED_ID}" "docker://${TARGET}"
+          DIGEST=$(cat /tmp/digest.txt)
+          echo "==> Pushed ${TARGET} @ ${DIGEST} — layers: ${LAYER_COUNT}"
+
+      - name: Login to ghcr.io for skopeo inspect
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            skopeo login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+      - name: Verify labels on ghcr.io
+        run: |
+          TAG="${{ inputs.version }}-${{ matrix.arch }}"
+          skopeo inspect \
+            "docker://ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${TAG}" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          labels = d.get('Labels', {})
+          for k in ['org.flatpak.ref', 'org.flatpak.metadata', 'org.opencontainers.image.created']:
+              s = 'OK' if k in labels else 'MISSING'
+              print(f'{s}: {k}')
+              if s == 'MISSING': sys.exit(1)
+          print('All required labels present.')
+          "
+
+      - name: Verify all layers are zstd:chunked
+        run: |
+          TAG="${{ inputs.version }}-${{ matrix.arch }}"
+          RESULTS=$(skopeo inspect --raw \
+            "docker://ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${TAG}" \
+            | jq -r '.layers[] | "Layer \(.digest[:19]): chunked=\((.annotations // {}) | has("io.github.containers.zstd-chunked.manifest-checksum"))"')
+          echo "${RESULTS}"
+          echo "${RESULTS}" | grep -q "chunked=false" \
+            && { echo "ERROR: one or more layers missing zstd:chunked annotation" >&2; exit 1; } \
+            || echo "==> All ${LAYER_COUNT} layers are zstd:chunked"

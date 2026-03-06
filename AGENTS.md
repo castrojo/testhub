@@ -65,6 +65,25 @@ Two build paths under `flatpaks/<app>/`:
 - chunkah layer count for goose (~200MB): ~30 layers from OSTree object store heuristics alone;
   xattr-based component hints deferred until repo has 3+ packages (see journal 20260306-184501-301)
 
+## Simplicity Rule
+
+**Prefer tools that are already available in the build environment over custom code.**
+
+The gnome-49 container and ubuntu-24.04 runners include `yq`, `jq`, `python3`, `curl`,
+`skopeo`, `podman`, `buildah`, `flatpak`, `ostree`. Use these directly.
+
+**Before adding any inline script, helper function, or new dependency, ask:**
+> "Does a pre-installed tool already do this?"
+
+Specifically:
+- YAML field extraction → `yq '.field' file` (NOT inline python3/awk/sed)
+- JSON processing → `jq` (NOT inline python3)
+- File download + verify → `curl` + `sha256sum` (NOT custom scripts)
+
+**When making a change that adds new tooling, a new dependency, or a new abstraction layer,
+stop and ask the user first.** This repo is intentionally minimal. The right default is
+"don't add it" unless there's no alternative.
+
 ## Plans Reference
 
 > Architecture, pipeline decisions, workflow test findings:
