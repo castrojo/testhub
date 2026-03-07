@@ -434,9 +434,14 @@ jobs:
           if [[ -f "${DESC_FILE}" ]]; then
             DESCRIPTION=$(yq '.description' "${DESC_FILE}")
             [[ "${DESCRIPTION}" != "null" && -n "${DESCRIPTION}" ]] || { echo "==> No description in release.yaml, skipping"; exit 0; }
-            gh api --method PATCH "/user/packages/container/${APP}" \
-              -f description="${DESCRIPTION}"
-            echo "==> Set package description: ${DESCRIPTION}"
+            # Note: PATCH /user/packages/container/<name> returns 404 for user-scoped packages
+            # (same limitation as visibility — web UI only). Best-effort, non-fatal.
+            if gh api --method PATCH "/user/packages/container/${APP}" \
+                -f description="${DESCRIPTION}" 2>/dev/null; then
+              echo "==> Set package description: ${DESCRIPTION}"
+            else
+              echo "==> WARNING: Could not set package description via API (known GitHub limitation — set manually in web UI)"
+            fi
           else
             echo "==> No release.yaml for ${APP}, skipping package description"
           fi
