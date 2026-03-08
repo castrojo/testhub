@@ -267,7 +267,8 @@ jobs:
             --label "org.opencontainers.image.url=https://github.com/castrojo/jorgehub" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             "${CTR}"
-          if [[ -n "${VERSION:-}" ]]; then
+          # title/description/license only exist in release.yaml (bundle-repack path)
+          if [[ -f "flatpaks/${{ matrix.app }}/release.yaml" ]]; then
             TITLE=$(yq '.title // ""' "flatpaks/${{ matrix.app }}/release.yaml")
             DESCRIPTION=$(yq '.description // ""' "flatpaks/${{ matrix.app }}/release.yaml")
             LICENSE=$(yq '.license // ""' "flatpaks/${{ matrix.app }}/release.yaml")
