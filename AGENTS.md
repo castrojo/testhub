@@ -48,6 +48,22 @@ Two build paths under `flatpaks/<app>/`:
 - `scripts/update-index.py` — regenerates `index/static` on gh-pages branch
 - `Justfile` — all commands proxied through `just`
 
+## Versioning Convention
+
+**Every package in this repo must carry an explicit version tag on ghcr.io in addition to `:latest`.**
+
+| Build path | Version source | OCI tag produced |
+|---|---|---|
+| `release.yaml` (bundle-repack) | `version:` field in `release.yaml` | `:v1.2.3` |
+| `manifest.yaml` (flatpak-builder) | `x-version:` field in `manifest.yaml` | `:1.2.3` |
+
+Rules:
+- `release.yaml` apps: `version` is a required field — CI errors if missing
+- `manifest.yaml` apps: add `x-version: "<version>"` as a top-level field; flatpak-builder ignores `x-`-prefixed fields
+- If `x-version` is absent, CI warns and pushes `:latest` only — this is a gap, not intentional
+- Version strings must reflect the actual upstream version of the bundled app (not build dates, git shas, or repo versions)
+- When upgrading an app, update `x-version` (or `version`) in the same commit that updates the source URL/sha256
+
 ## Critical Notes
 
 - `SOURCE_DATE_EPOCH=0` is set at job level in CI — required for deterministic OCI blob hashes;

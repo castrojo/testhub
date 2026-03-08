@@ -5,6 +5,7 @@ sdk: org.freedesktop.Sdk
 base: org.mozilla.firefox.BaseApp
 base-version: "24.08"
 default-branch: nightly
+x-version: "150.0a1"
 command: firefox
 
 finish-args:

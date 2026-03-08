@@ -207,19 +207,28 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Read release metadata (bundle-repack apps only)
+      - name: Read release metadata
         run: |
-          # GITHUB_ENV is job-scoped — VERSION/UPSTREAM_URL written by the build job are not
-          # available here. Re-derive them from release.yaml if this is a bundle-repack app.
+          # GITHUB_ENV is job-scoped — re-derive version here from source descriptors.
+          # Bundle-repack: read version + url from release.yaml.
+          # Flatpak-builder: read x-version from manifest.yaml (x- prefix is ignored by flatpak-builder).
+          # If neither supplies a version, only :latest is pushed (ghostty tip, etc.).
           DESC="flatpaks/${{ matrix.app }}/release.yaml"
+          MANIFEST="flatpaks/${{ matrix.app }}/manifest.yaml"
           if [[ -f "${DESC}" ]]; then
             VERSION=$(yq '.version' "${DESC}")
             URL=$(yq '.url' "${DESC}")
             echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
             echo "UPSTREAM_URL=${URL}" >> "$GITHUB_ENV"
             echo "==> Bundle-repack: VERSION=${VERSION}"
-          else
-            echo "==> Flatpak-builder app — VERSION/UPSTREAM_URL not set"
+          elif [[ -f "${MANIFEST}" ]]; then
+            X_VERSION=$(yq '.x-version // ""' "${MANIFEST}")
+            if [[ -n "${X_VERSION}" && "${X_VERSION}" != "null" ]]; then
+              echo "VERSION=${X_VERSION}" >> "$GITHUB_ENV"
+              echo "==> Flatpak-builder: VERSION=${X_VERSION}"
+            else
+              echo "==> Flatpak-builder: no x-version in manifest.yaml — only :latest will be pushed"
+            fi
           fi
 
       - name: Download OCI artifact
