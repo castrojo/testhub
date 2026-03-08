@@ -45,7 +45,7 @@
       "Name": "castrojo/goose",
       "Images": [
         {
-          "Digest": "sha256:9118c917705ab3f1a6bcd53e116d2da669147fb549bb06a1b91293ea52b7d71c",
+          "Digest": "sha256:63f5ea3dda2df72baa618fc224647aab828b542bf0694290d5c6d7a273ad1dd8",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
