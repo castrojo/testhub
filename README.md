@@ -30,11 +30,11 @@ This potentially unlocks all container registries and git forges as Flatpak host
 |---|---|---|
 | Ghostty | `com.mitchellh.ghostty` | GPU-accelerated terminal emulator |
 | Goose | `io.github.block.Goose` | Goose AI agent |
-| Firefox Nightly | `org.mozilla.firefox` | Firefox Nightly browser |
+| Firefox Nightly | `org.mozilla.firefox//nightly` | Firefox Nightly browser |
 
     flatpak install jorgehub com.mitchellh.ghostty
     flatpak install jorgehub io.github.block.Goose
-    flatpak install jorgehub org.mozilla.firefox
+    flatpak install jorgehub org.mozilla.firefox//nightly
 
 ### Update all
 
