@@ -21,13 +21,17 @@ _apply-oci-labels image-id version="" url="" release-desc="":
     RELEASE_DESC="{{release-desc}}"
     CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     GH_OWNER="${GITHUB_REPOSITORY_OWNER:-castrojo}"
+    # buildah config operates on working containers, not image IDs.
+    # Pattern: from → config → commit → rm; output new image ID on stdout for caller to capture.
+    CTR=$(buildah from "${IMAGE_ID}")
+    echo "==> buildah container: ${CTR}" >&2
     buildah config \
       --label "org.opencontainers.image.version=${VERSION}" \
       --label "org.opencontainers.image.source=${URL}" \
       --label "org.opencontainers.image.created=${CREATED}" \
       --label "org.opencontainers.image.vendor=${GH_OWNER}" \
       --label "org.opencontainers.image.url=https://github.com/${GH_OWNER}/jorgehub" \
-      "${IMAGE_ID}"
+      "${CTR}"
     if [[ -n "${VERSION}" && -f "${RELEASE_DESC}" ]]; then
         TITLE=$(yq '.title // ""' "${RELEASE_DESC}")
         DESCRIPTION=$(yq '.description // ""' "${RELEASE_DESC}")
@@ -36,9 +40,12 @@ _apply-oci-labels image-id version="" url="" release-desc="":
         [[ -n "${TITLE}" ]]       && labels+=(--label "org.opencontainers.image.title=${TITLE}")
         [[ -n "${DESCRIPTION}" ]] && labels+=(--label "org.opencontainers.image.description=${DESCRIPTION}")
         [[ -n "${LICENSE}" ]]     && labels+=(--label "org.opencontainers.image.licenses=${LICENSE}")
-        (( ${#labels[@]} > 0 )) && buildah config "${labels[@]}" "${IMAGE_ID}"
+        (( ${#labels[@]} > 0 )) && buildah config "${labels[@]}" "${CTR}"
     fi
-    echo "==> OCI labels applied"
+    NEW_ID=$(buildah commit "${CTR}")
+    buildah rm "${CTR}" > /dev/null
+    echo "==> OCI labels applied → ${NEW_ID}" >&2
+    echo "${NEW_ID}"
 
 # === Build recipes ===
 
@@ -104,6 +111,10 @@ build app="ghostty":
         [[ -n "${APP_ID}" ]] || { echo "ERROR: could not determine app-id from ${MANIFEST}" >&2; exit 1; }
         BRANCH=$(yq '.default-branch // "stable"' "${MANIFEST}")
         REF="app/${APP_ID}/${ARCH}/${BRANCH}"
+        VERSION=$(yq '.x-version // ""' "${MANIFEST}")
+        [[ -n "${VERSION}" && "${VERSION}" != "null" ]] \
+          && echo "==> Flatpak-builder: VERSION=${VERSION}" \
+          || { echo "==> Flatpak-builder: no x-version in manifest.yaml — :latest only"; VERSION=""; }
         echo "==> Building ${REF}"
         echo "==> mode: full (ghcr.io push)"
         podman image exists "{{container_image}}" || podman pull "{{container_image}}"
@@ -135,7 +146,7 @@ build app="ghostty":
     IMAGE_ID=$(podman pull --quiet "oci:./${OCI_DIR}")
     echo "==> Single-layer image: ${IMAGE_ID}"
     # Apply OCI standard labels before chunkah — labels added after CHUNKAH_CONFIG_STR is captured are lost
-    just _apply-oci-labels "${IMAGE_ID}" "${VERSION:-}" "${URL:-}" "${RELEASE_DESC}"
+    IMAGE_ID=$(just _apply-oci-labels "${IMAGE_ID}" "${VERSION:-}" "${URL:-}" "${RELEASE_DESC}")
     echo "==> Running chunkah to split into content-based layers"
     podman image exists "quay.io/jlebon/chunkah:v0.2.0" || podman pull "quay.io/jlebon/chunkah:v0.2.0"
     export CHUNKAH_CONFIG_STR
@@ -178,7 +189,7 @@ build app="ghostty":
       "${CHUNKED_ID}" "docker://ghcr.io/${GH_OWNER}/${APP}:latest-${ARCH}"
     GHCR_DIGEST=$(cat "/tmp/${APP}-ghcr-digest.txt")
     echo "==> ghcr.io digest: ${GHCR_DIGEST}"
-    # Version and stable tags (bundle-repack path only — VERSION not set for flatpak-builder)
+    # Version and stable tags — set for bundle-repack; for manifest.yaml apps, requires x-version field
     if [[ -n "${VERSION:-}" ]]; then
         echo "==> Pushing version tag: ${VERSION}-${ARCH}"
         skopeo copy --compression-format=zstd:chunked --dest-creds "${GH_OWNER}:$(gh auth token)" \
@@ -270,6 +281,10 @@ loop app="ghostty":
         [[ -n "${APP_ID}" ]] || { echo "ERROR: could not determine app-id from ${MANIFEST}" >&2; exit 1; }
         BRANCH=$(yq '.default-branch // "stable"' "${MANIFEST}")
         REF="app/${APP_ID}/${ARCH}/${BRANCH}"
+        VERSION=$(yq '.x-version // ""' "${MANIFEST}")
+        [[ -n "${VERSION}" && "${VERSION}" != "null" ]] \
+          && echo "==> Flatpak-builder: VERSION=${VERSION}" \
+          || { echo "==> Flatpak-builder: no x-version in manifest.yaml — :latest only"; VERSION=""; }
         echo "==> Building ${REF}"
         podman image exists "{{container_image}}" || podman pull "{{container_image}}"
         podman run --rm --privileged \
@@ -298,7 +313,7 @@ loop app="ghostty":
     echo "==> Loaded image: ${IMAGE_ID}"
 
     # 1b. Apply OCI standard labels before chunkah — labels added after CHUNKAH_CONFIG_STR are lost
-    just _apply-oci-labels "${IMAGE_ID}" "${VERSION:-}" "${URL:-}" "${RELEASE_DESC}"
+    IMAGE_ID=$(just _apply-oci-labels "${IMAGE_ID}" "${VERSION:-}" "${URL:-}" "${RELEASE_DESC}")
 
     # 2. Ensure chunkah image is cached
     podman image exists "quay.io/jlebon/chunkah:v0.2.0" || podman pull "quay.io/jlebon/chunkah:v0.2.0"

@@ -3,6 +3,7 @@ runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
 default-branch: stable
+x-version: "0.4.6"
 command: lm-studio
 finish-args:
   # GPU compute for AI inference (CUDA, ROCm, Vulkan) — device=dri alone is not enough
