@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["github-actions"],
+  "schedule": ["after 6am and before 8am on Monday"],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "labels": ["dependencies", "automated"]
+}

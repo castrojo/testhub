@@ -47,4 +47,6 @@ modules:
 
     sources:
       - type: file
-        path: LM-Studio-0.4.6-1-x64.deb
+        url: https://installers.lmstudio.ai/linux/x64/0.4.6-1/LM-Studio-0.4.6-1-x64.deb
+        sha256: 17cd37b55172c59983f452b4d43d97c39b77e4301444922f7b4696d56be45016
+        dest-filename: LM-Studio-0.4.6-1-x64.deb

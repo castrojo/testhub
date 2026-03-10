@@ -3,6 +3,7 @@ runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
 default-branch: stable
+x-version: "1.3.0"
 command: ghostty
 finish-args:
   # 3D rendering
@@ -47,8 +48,8 @@ modules:
         --system $PWD/vendor/p
     sources:
       - type: archive
-        url: https://github.com/ghostty-org/ghostty/releases/download/tip/ghostty-source.tar.gz
-        sha256: 55b92b6b47a323ca95c019f3dfdb833a9ad8c68a1e96921af5b0fb5665158269
+        url: https://codeload.github.com/ghostty-org/ghostty/tar.gz/refs/tags/v1.3.0
+        sha256: 3d05cbdb712ec19ecdc720a2757a09ebf79aaa8d90ae2ae5c0ddd5536ef31be6
         strip-components: 1
 
       - zig-packages.json
