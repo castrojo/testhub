@@ -370,6 +370,7 @@ update-index app="ghostty":
     git worktree add /tmp/jorgehub-pages gh-pages 2>/dev/null || true
     cd /tmp/jorgehub-pages && python3 "${REPO_ROOT}/scripts/update-index.py" \
       --app {{app}} \
+      --repo "castrojo/{{app}}" \
       --digest "${DIGEST}" \
       --registry ghcr.io \
       --tags "latest-${ARCH}"

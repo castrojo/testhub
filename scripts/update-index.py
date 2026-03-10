@@ -97,9 +97,7 @@ def main():
     parser.add_argument("--app", help="App name (e.g. ghostty)")
     parser.add_argument("--digest", help="Image digest (sha256:...)")
     parser.add_argument("--registry", default="ghcr.io")
-    parser.add_argument(
-        "--repo", help="Full repo path (default: castrojo/jorgehub/<app>)"
-    )
+    parser.add_argument("--repo", help="Full repo path (default: castrojo/<app>)")
     parser.add_argument("--tls-verify", action="store_true", default=True)
     parser.add_argument("--no-tls-verify", dest="tls_verify", action="store_false")
     parser.add_argument("--validate", action="store_true")
@@ -114,7 +112,7 @@ def main():
     if not args.app or not args.digest:
         parser.error("--app and --digest are required")
 
-    repo = args.repo or f"castrojo/jorgehub/{args.app}"
+    repo = args.repo or f"castrojo/{args.app}"
     index = load_index()
     inspect_data = inspect_image(args.registry, repo, args.digest, args.tls_verify)
     index = update_index(index, args.app, repo, args.digest, inspect_data, args.tags)
