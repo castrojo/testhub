@@ -138,6 +138,13 @@ jobs:
             echo "==> No metainfo XML found for ${{ matrix.app }} — skipping validation"
           fi
 
+      - name: Lint Flatpak manifest
+        if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
+        run: |
+          # flatpak-builder-lint is available directly in the gnome-49 container at /app/bin/flatpak-builder-lint
+          # Runs before the build to catch manifest issues early. Fails the job on errors.
+          flatpak-builder-lint manifest "flatpaks/${{ matrix.app }}/manifest.yaml"
+
       - name: Build with flatpak-builder (cached)
         if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         uses: flatpak/flatpak-github-actions/flatpak-builder@92ae9851ad316786193b1fd3f40c4b51eb5cb101 # v6
@@ -148,13 +155,6 @@ jobs:
           cache: true
           cache-key: flatpak-${{ matrix.app }}-${{ matrix.arch }}-${{ hashFiles(format('flatpaks/{0}/manifest.yaml', matrix.app)) }}
           branch: ${{ steps.manifest-meta.outputs.branch }}
-
-      - name: Lint manifest (flatpak-builder path)
-        if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
-        run: |
-          # flatpak-builder-lint is available in the gnome-49 container (job-level container)
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-            manifest "flatpaks/${{ matrix.app }}/manifest.yaml" || true
 
       - name: Export OCI bundle (flatpak-builder path)
         if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
