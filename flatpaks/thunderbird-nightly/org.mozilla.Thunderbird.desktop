@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Name=Thunderbird Nightly
+GenericName=Mail Client
+Comment=Read and send mail and news
+Keywords=Internet;Email;Mail;News;
+Exec=thunderbird %U
+Terminal=false
+X-MultipleArgs=false
+Icon=org.mozilla.Thunderbird
+StartupNotify=true
+StartupWMClass=org.mozilla.Thunderbird
+Categories=Network;Email;
+MimeType=message/rfc822;x-scheme-handler/mailto;text/calendar;text/x-vcard;
+
+Actions=new-window;compose;
+
+[Desktop Action new-window]
+Name=Open a New Window
+Exec=thunderbird --new-window
+
+[Desktop Action compose]
+Name=Compose New Message
+Exec=thunderbird -compose

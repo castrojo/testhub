@@ -1,0 +1,109 @@
+app-id: org.mozilla.Thunderbird
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+default-branch: nightly
+x-version: "150.0a1"
+x-chunkah-max-layers: "16"
+x-container-image: "ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08"
+command: thunderbird
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=fallback-x11
+  - --socket=pcsc
+  - --socket=cups
+  - --device=dri
+  - --filesystem=xdg-config/gtk-3.0:ro
+  - --filesystem=xdg-download
+  - --filesystem=xdg-run/speech-dispatcher:ro
+  - --persist=.thunderbird-nightly
+  - --own-name=org.mozilla.Thunderbird.*
+  - --talk-name=org.gtk.vfs.*
+  - --talk-name=org.a11y.Bus
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --env=DICPATH=/usr/share/hunspell
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: "24.08"
+    add-ld-path: .
+  org.mozilla.Thunderbird.Locale:
+    directory: share/runtime/langpack
+    version: nightly
+    subdirectories: true
+    no-autodownload: true
+
+modules:
+  - name: thunderbird
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/thunderbird
+      - cp -r thunderbird/. /app/lib/thunderbird/
+      - install -D -m 755 thunderbird.sh /app/bin/thunderbird
+      - install -D -m 644 org.mozilla.Thunderbird.desktop /app/share/applications/org.mozilla.Thunderbird.desktop
+      - install -D -m 644 org.mozilla.Thunderbird.appdata.xml /app/share/metainfo/org.mozilla.Thunderbird.appdata.xml
+      - install -D -m 644 icons/16.png /app/share/icons/hicolor/16x16/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 icons/32.png /app/share/icons/hicolor/32x32/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 icons/48.png /app/share/icons/hicolor/48x48/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 icons/64.png /app/share/icons/hicolor/64x64/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 icons/128.png /app/share/icons/hicolor/128x128/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 icons/256.png /app/share/icons/hicolor/256x256/apps/org.mozilla.Thunderbird.png
+    cleanup-commands:
+      - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+      - mkdir -p ${FLATPAK_DEST}/share/runtime/langpack
+    sources:
+      - type: archive
+        url: https://download-installer.cdn.mozilla.net/pub/thunderbird/nightly/latest-comm-central/thunderbird-150.0a1.en-US.linux-x86_64.tar.xz
+        sha256: 4647128e4a99ccb317485f4a436ad401a4df9bdd82b5f24d8ade6b96a1c1094f
+        strip-components: 0
+        only-arches:
+          - x86_64
+      - type: script
+        dest-filename: thunderbird.sh
+        commands:
+          - export TMPDIR=$XDG_CACHE_HOME/tmp
+          - exec /app/lib/thunderbird/thunderbird --name org.mozilla.Thunderbird "$@"
+      - type: file
+        path: org.mozilla.Thunderbird.desktop
+      - type: file
+        path: org.mozilla.Thunderbird.appdata.xml
+      # Icons pinned to comm-central revision 0a9b4084679aa2d291ec4ea69dccac4219acb705 (2026-03-11).
+      # Update the revision hash and sha256 values when bumping x-version.
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default16.png
+        sha256: 63d8287e58bbc78b5548eedc47778f2212813b9785aea4ccf5ec4329a31bc285
+        dest: icons
+        dest-filename: 16.png
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default32.png
+        sha256: fddf94ccd9cc9e4579b1e494631415981973eae9111e4d1fae20c4b711900d8c
+        dest: icons
+        dest-filename: 32.png
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default48.png
+        sha256: 131db1c7c505c94f2ec5455d77da9722039ef06a7748d4de885c1a94563573af
+        dest: icons
+        dest-filename: 48.png
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default64.png
+        sha256: 3eecee68cfa354807919b4b6d98d56209415809630d02076229d1ae622bcf0f9
+        dest: icons
+        dest-filename: 64.png
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default128.png
+        sha256: c57b6b8833b9b455e82f86a275fdf516d8d20041b54551e2608455a48c6ecece
+        dest: icons
+        dest-filename: 128.png
+      - type: file
+        url: https://hg-edge.mozilla.org/comm-central/raw-file/0a9b4084679aa2d291ec4ea69dccac4219acb705/mail/branding/nightly/default256.png
+        sha256: f46af33958814b7d26de5c896dbe70ef26f2d079a96c280bf0266d5e7aeb6904
+        dest: icons
+        dest-filename: 256.png

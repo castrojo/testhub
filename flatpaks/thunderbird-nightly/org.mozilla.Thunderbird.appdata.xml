@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.mozilla.Thunderbird</id>
+  <name>Thunderbird Nightly</name>
+  <summary>The next generation of Mozilla Thunderbird</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <description>
+    <p>
+      Thunderbird Nightly is the development channel build of Mozilla Thunderbird,
+      providing early access to new features and improvements before they
+      reach the release channel.
+    </p>
+  </description>
+  <url type="homepage">https://www.thunderbird.net/en-US/thunderbird/nightly/notes/</url>
+  <url type="bugtracker">https://bugzilla.mozilla.org/</url>
+  <launchable type="desktop-id">org.mozilla.Thunderbird.desktop</launchable>
+  <releases>
+    <release version="150.0a1" date="2026-03-11"/>
+  </releases>
+  <provides>
+    <binary>thunderbird</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>
