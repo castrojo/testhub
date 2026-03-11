@@ -5,6 +5,8 @@ sdk: org.kde.Sdk
 command: VirtualBox
 rename-icon: virtualbox
 rename-desktop-file: virtualbox.desktop
+x-arches:
+  - x86_64
 x-container-image: "ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10"
 
 finish-args:

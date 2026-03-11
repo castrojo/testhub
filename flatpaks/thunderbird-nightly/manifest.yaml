@@ -4,6 +4,8 @@ runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
 default-branch: nightly
 x-version: "150.0a1"
+x-arches:
+  - x86_64
 x-chunkah-max-layers: "16"
 x-container-image: "ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08"
 command: thunderbird
