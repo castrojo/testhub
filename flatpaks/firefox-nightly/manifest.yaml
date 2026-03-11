@@ -73,7 +73,7 @@ modules:
     sources:
       - type: archive
         url: https://download-installer.cdn.mozilla.net/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz
-        sha256: f6f6fd02a16daced3b9e3820b9f34b74dd3e819737468c64f5a1b26f94152b61
+        sha256: 20a8807687d6e184b5cb06b08223d7200ecd208a91c1a23a66c6af41d13d7fb6
         strip-components: 0
         only-arches:
           - x86_64
