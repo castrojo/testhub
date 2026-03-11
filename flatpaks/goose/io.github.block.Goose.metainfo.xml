@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- NOTE: This file is a source-side asset only. The bundle-repack path cannot inject
+     files into the upstream .flatpak bundle. This metainfo will NOT appear in the
+     installed Flatpak unless the upstream bundle includes it. -->
 <component type="desktop-application">
   <id>io.github.block.Goose</id>
   <metadata_license>CC0-1.0</metadata_license>
