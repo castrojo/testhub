@@ -37,3 +37,31 @@ just check-index   # validates index/static JSON from main branch (uses worktree
 
 Located at `scripts/update-index.py`. Regenerates `index/static` on the gh-pages branch.
 Run with `--validate` to check JSON without writing.
+
+## CI event filter (update-index.yml)
+
+`update-index.yml` uses an allowlist to decide when to run:
+
+```yaml
+if: >-
+  github.event.workflow_run.conclusion == 'success' &&
+  (github.event.workflow_run.event == 'push' ||
+   github.event.workflow_run.event == 'merge_group' ||
+   github.event.workflow_run.event == 'workflow_dispatch')
+```
+
+**Why allowlist, not denylist:** The original guard was `event != 'pull_request'`.
+GitHub's merge queue fires `workflow_run` with `event: 'merge_group'`, which
+passed the denylist — but builds that only affect non-flatpak files (e.g., CI
+workflow changes) also fire `event: 'push'` with no digest artifacts, causing
+update-index to run but find nothing.
+
+The allowlist explicitly permits only the three events that should update the index:
+- `push` — direct pushes to main touching `flatpaks/**`
+- `merge_group` — merge queue merges
+- `workflow_dispatch` — manual test builds
+
+**If ghostty/any app is missing from the remote after a merge:**
+The build succeeded but update-index was skipped. Fix: trigger a fresh build
+via `gh workflow run build.yml -f app=<app>` — this uses `workflow_dispatch`
+which is in the allowlist.
