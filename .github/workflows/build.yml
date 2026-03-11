@@ -6,6 +6,10 @@ on:
     paths:
       - 'flatpaks/**'
     branches: [main]
+  pull_request:
+    paths:
+      - 'flatpaks/**'
+  merge_group:
   workflow_dispatch:
     inputs:
       app:
@@ -232,10 +236,27 @@ jobs:
           path: ${{ matrix.app }}.oci/
           retention-days: 1
 
+  # ── Build gate (required check for merge queue) ───────────────────────────
+  # Single stable job name that requires all build matrix entries to pass.
+  # This is what the branch ruleset requires as a status check.
+  build-complete:
+    needs: [detect, build]
+    if: always() && needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Check build results
+        run: |
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "ERROR: build matrix did not fully succeed (result: ${{ needs.build.result }})" >&2
+            exit 1
+          fi
+          echo "==> All build jobs passed"
+
   # ── Push OCI to ghcr.io with zstd:chunked ─────────────────────────────────
   push:
     needs: [detect, build]
-    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != '' && github.event_name != 'pull_request'
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     permissions:
       packages: write
@@ -576,7 +597,7 @@ jobs:
   # concurrent per-arch jobs each overwrote :latest with a 1-platform manifest.
   merge-index:
     needs: [detect, push]
-    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != '' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       packages: write
@@ -709,7 +730,7 @@ jobs:
   # workflow when needed.
   cleanup:
     needs: [detect, push, merge-index]
-    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != '' && github.event_name != 'pull_request'
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     permissions:
       packages: write
