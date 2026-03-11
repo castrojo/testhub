@@ -40,6 +40,26 @@
           }
         }
       ]
+    },
+    {
+      "Name": "projectbluefin/testhub/lmstudio",
+      "Images": [
+        {
+          "Digest": "sha256:fa77bcd2882ca2967fab6b5fdb989d5e1a4b63c249e1b3f15400ea5bf6b22b27",
+          "MediaType": "application/vnd.oci.image.manifest.v1+json",
+          "OS": "linux",
+          "Architecture": "amd64",
+          "Tags": [
+            "latest"
+          ],
+          "Labels": {
+            "org.flatpak.ref": "app/ai.lmstudio.LMStudio/x86_64/stable",
+            "org.flatpak.metadata": "[Application]\nname=ai.lmstudio.LMStudio\nruntime=org.gnome.Platform/x86_64/49\nsdk=org.gnome.Sdk/x86_64/49\ncommand=lm-studio\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;fallback-x11;\ndevices=all;\nfilesystems=home;\n\n[Session Bus Policy]\norg.freedesktop.Notifications=talk\norg.freedesktop.portal.Desktop=talk\n\n[Extension ai.lmstudio.LMStudio.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=ai.lmstudio.LMStudio.Debug;",
+            "org.flatpak.installed-size": "2182049280",
+            "org.flatpak.download-size": "1037250500"
+          }
+        }
+      ]
     }
   ]
 }
