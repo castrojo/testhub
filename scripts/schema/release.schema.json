@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "jorgehub release.yaml schema",
+  "type": "object",
+  "required": ["app-id", "version", "url", "sha256"],
+  "properties": {
+    "app-id": {
+      "type": "string",
+      "description": "Reverse-DNS application ID",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_.]+$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Upstream app version string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Immutable direct download URL for the upstream .flatpak bundle"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "SHA256 checksum of the downloaded file",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "arches": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Supported architectures"
+    }
+  },
+  "additionalProperties": true
+}

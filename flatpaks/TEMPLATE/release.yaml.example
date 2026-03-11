@@ -1,0 +1,33 @@
+# Template for release.yaml (bundle-repack path)
+# Use this when packaging an upstream pre-built .flatpak bundle.
+# Required fields: app-id, version, url, sha256
+# Optional fields: title, description, license, arches
+
+# Required: Reverse-DNS application ID matching the upstream bundle
+app-id: com.example.MyApp
+
+# Required: Upstream app version (used for :vX.Y.Z OCI tag on ghcr.io)
+version: "1.2.3"
+
+# Required: Immutable direct download URL for the upstream .flatpak bundle
+# Must be a versioned URL — never use rolling "latest" or "tip" URLs
+url: https://github.com/example/myapp/releases/download/v1.2.3/MyApp-1.2.3.flatpak
+
+# Required: SHA256 checksum of the downloaded file
+# Compute with: curl -sL <url> | sha256sum
+sha256: abc123...
+
+# Optional: Human-readable app title (used in index metadata)
+title: My App
+
+# Optional: Short description (one line)
+description: A useful application
+
+# Optional: SPDX license identifier
+# Use LicenseRef-proprietary=<url> for proprietary apps
+license: MIT
+
+# Optional: Supported architectures. Default: [x86_64]
+# Only list arches with confirmed upstream bundle availability
+arches:
+  - x86_64

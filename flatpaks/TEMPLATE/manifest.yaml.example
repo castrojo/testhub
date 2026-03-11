@@ -1,0 +1,48 @@
+# Template for manifest.yaml (flatpak-builder path)
+# Use this when building a Flatpak from source using flatpak-builder.
+# Required top-level fields: id, runtime, runtime-version, sdk, command
+# x-version: version of the upstream app (not the packaging)
+
+# Required: Reverse-DNS application ID
+id: com.example.MyApp
+
+# Required: x-version tracks the upstream app version
+# Used for :vX.Y.Z OCI tag on ghcr.io. flatpak-builder ignores x- prefixed fields.
+x-version: "1.2.3"
+
+# Required
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+
+# Required: Entry point command
+command: myapp
+
+# Finish args — follow Flatpak/Flathub policy:
+# - Request only what the app actually needs
+# - Document non-obvious permissions with inline comments
+# - --device=all: required only for GPU/hardware device access
+# - --filesystem=home: avoid unless app genuinely requires broad home access
+# - Use specific XDG paths (--filesystem=xdg-config/myapp:ro) when possible
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri  # GPU rendering
+
+# Cleanup: remove development files from the final image
+cleanup:
+  - /include
+  - /lib/pkgconfig
+
+modules:
+  - name: myapp
+    buildsystem: cmake-ninja  # or: simple, autotools, meson, etc.
+    sources:
+      - type: archive
+        url: https://github.com/example/myapp/archive/refs/tags/v1.2.3.tar.gz
+        sha256: abc123...
+    # For desktop app: install metainfo and icon
+    post-install:
+      - install -Dm644 com.example.MyApp.metainfo.xml /app/share/metainfo/com.example.MyApp.metainfo.xml

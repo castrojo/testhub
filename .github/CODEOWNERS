@@ -1,0 +1,8 @@
+# Global fallback
+* @castrojo
+
+# Per-package ownership
+flatpaks/ghostty/ @castrojo
+flatpaks/lmstudio/ @castrojo
+flatpaks/firefox-nightly/ @castrojo
+flatpaks/goose/ @castrojo

@@ -389,6 +389,32 @@ check-index:
     cd /tmp/jorgehub-pages && python3 "${REPO_ROOT}/scripts/update-index.py" --validate
     git worktree remove /tmp/jorgehub-pages --force
 
+# Validate manifest lint + appstreamcli for an app (runs inside gnome-49 container)
+validate app:
+    @echo "==> Validating {{app}}..."
+    @if [ -f "flatpaks/{{app}}/manifest.yaml" ]; then \
+        echo "==> flatpak-builder-lint on manifest.yaml..."; \
+        podman run --rm -v "$(pwd)/flatpaks/{{app}}:/app:ro" \
+            {{container_image}} \
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest /app/manifest.yaml; \
+    fi
+    @METAINFO=$$(find flatpaks/{{app}} -name "*.metainfo.xml" | head -1); \
+    if [ -n "$$METAINFO" ]; then \
+        echo "==> appstreamcli validate on $$METAINFO..."; \
+        podman run --rm -v "$(pwd):/workspace:ro" \
+            {{container_image}} \
+            appstreamcli validate --no-net "/workspace/$$METAINFO"; \
+    fi
+
+# Compare current chunkah invocation with upstream README recommendation
+check-chunkah:
+    @echo "=== Upstream chunkah README (invocation section) ==="
+    @curl -fsSL https://raw.githubusercontent.com/coreos/chunkah/main/README.md \
+        | grep -A5 -B2 'Containerfile.splitter' | head -20
+    @echo ""
+    @echo "=== Current build.yml chunkah invocation ==="
+    @grep -A5 -B2 'Containerfile.splitter' .github/workflows/build.yml | head -20
+
 # E2E: add remote, list apps, confirm app is visible
 verify app="ghostty":
     #!/usr/bin/env bash
