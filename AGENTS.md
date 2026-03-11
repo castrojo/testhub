@@ -21,15 +21,19 @@ Ghostty is the first app and the proof-of-concept for the full pipeline.
 **All development and testing MUST be verified locally before CI.**
 
 ```bash
-just loop <app>
+just loop-all          # preferred: build ALL apps concurrently (one container per app)
+just loop <app>        # single-app loop when only one app is affected
 ```
 
-- `just loop <app>` is the mandatory first test for any change — builds, chunkah split, push to local registry (:5000), label verification
-- CI (`just build` / GitHub Actions) runs ONLY after `just loop` passes locally
+- `just loop-all` is the preferred validation pass — runs all apps in parallel, one `just loop` per app, reports per-app logs on completion
+- `just loop <app>` is used only when a change affects a single app in isolation
+- **Never run apps sequentially when validating multiple apps** — concurrent builds are always preferred; one container per app is the invariant
+- CI (`just build` / GitHub Actions) runs ONLY after `just loop` / `just loop-all` passes locally
 - Never trigger CI as a substitute for local testing
 
 ```bash
-just loop <app>   # local_registry defaults to localhost:5000
+just loop-all          # local_registry defaults to localhost:5000; runs ghostty goose lmstudio firefox-nightly in parallel
+just loop <app>        # single app; local_registry defaults to localhost:5000
 ```
 
 ## Build Commands
@@ -136,10 +140,19 @@ Rules:
 - **LM Studio metainfo release date placeholder:** `flatpaks/lmstudio/metainfo.xml` uses a
   placeholder release date (`2025-03-01` for v0.4.7) because lmstudio.ai/changelog only listed
   entries up to v0.4.6 as of 2026-03-11. Update the date when the upstream changelog is updated.
-- **lmstudio icon path needs build-time verification:** The expected path
-  `usr/share/icons/hicolor/0x0/apps/lm-studio.png` follows Electron deb conventions but has not
-  been confirmed against the actual bundle. If wrong, the install will fail silently or error.
-  Verify during the first `just loop lmstudio` run; add a build-time check if the path is fragile.
+- **lmstudio icon is 1024×1024; resize to 512×512 is an open problem (WORKAROUND: icon omitted):**
+  The deb ships a 1024×1024 PNG at `usr/share/icons/hicolor/0x0/apps/lm-studio.png`.
+  flatpak-builder rejects any icon >512×512 at export time regardless of the hicolor directory name.
+  Known failed approaches inside the flatpak-builder sandbox (gnome-49 build-commands):
+  - `convert` (ImageMagick) — not available in gnome-49
+  - `python3 gi` / GdkPixbuf — fails because glycin sandboxed loaders are unavailable inside the
+    flatpak-builder restricted build environment; `GdkPixbuf.Pixbuf.new_from_file()` raises an error
+  - `ffmpeg` — available but overkill; not confirmed working for PNG→PNG resize in this context
+  **Current workaround:** the lmstudio manifest skips the icon entirely until a working resize tool
+  is confirmed. To resolve: identify a tool available in gnome-49 build-commands that can resize a
+  PNG without requiring glycin loaders (e.g. `python3 PIL/Pillow`, `gdk-pixbuf-thumbnailer`,
+  `magick` from ImageMagick 7, or `ffmpeg -vf scale=512:512`). Verify inside a live gnome-49
+  container before updating the manifest.
 - **firefox-nightly aarch64 sha256 is intentionally rolling-stale.** The nightly manifest uses
   `latest-mozilla-central` rolling URLs — the sha256 for aarch64 becomes stale daily by design.
   This is acceptable for a nightly-tracking app. Do not attempt to pin sha256 for nightly builds;
