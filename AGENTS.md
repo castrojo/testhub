@@ -26,13 +26,39 @@ that area.
 
 ## Apps
 
-`ghostty` (manifest.yaml), `goose` `lmstudio` `firefox-nightly` (release.yaml or manifest.yaml)
+`ghostty` `thunderbird-nightly` `virtualbox` (manifest.yaml), `goose` `lmstudio` `firefox-nightly` (release.yaml or manifest.yaml)
 
-## Workflow improvement
+## Test builds
 
-When a CI pattern fails unexpectedly, a pipeline behavior is discovered that isn't
-documented, or any step takes >2 tries to get right: update the relevant skill file
-immediately. Skills are the single source of truth for this repo's institutional knowledge.
+When triggering a manual test build, always use `goose` (bundle-repack, fastest — no compile step).
+Never use `ghostty` for test builds (full Zig compile via flatpak-builder, very slow).
+
+## Skill usage — mandatory
+
+**Load the relevant skill before touching any file in its domain.** This is not optional.
+
+| You are about to... | Load skill |
+|---|---|
+| Change `build.yml`, `update-index.yml`, Justfile, or chunkah flags | `skills/pipeline.md` |
+| Change `x-version`, `version`, source URL, or OCI tag logic | `skills/versioning.md` |
+| Add or change OCI labels, annotations, or chunkah label output | `skills/flatpak-labels.md` |
+| Run or debug `update-index`, gh-pages worktree, or index shape | `skills/gh-pages-index.md` |
+| Add a new app, change finish-args, hit a build quirk | `skills/app-gotchas.md` |
+| Touch Renovate config or understand why a dep isn't auto-updated | `skills/renovate.md` |
+
+## Skill improvement — mandatory
+
+Skills are the single source of truth for this repo's institutional knowledge.
+**Any of these events requires an immediate skill update before moving on:**
+
+- A CI step fails unexpectedly and the root cause is not already documented
+- A pipeline behavior is discovered that isn't in the relevant skill
+- Any fix takes more than one attempt to get right
+- A lint error, build error, or tool quirk is found that could recur
+
+**How to update:** edit the relevant `skills/*.md` file, commit with `docs(skills): ...`,
+then record the finding in the workflow-state journal:
+`journal_write(title: "...", body: "...", tags: "ci-cd")`
 
 ## Architecture reference
 
