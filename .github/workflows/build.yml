@@ -341,12 +341,11 @@ jobs:
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Log in to ghcr.io for cosign
-        run: |
-          # go-containerregistry (used by cosign) reads $HOME/.docker/config.json first.
-          # docker login writes to that path; podman login writes to containers/auth.json
-          # which cosign never sees because the docker config takes precedence.
-          echo "${{ secrets.GITHUB_TOKEN }}" | \
-            docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign image with cosign
         run: |
