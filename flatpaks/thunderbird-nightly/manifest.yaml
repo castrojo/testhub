@@ -1,4 +1,4 @@
-app-id: org.mozilla.Thunderbird
+app-id: org.mozilla.thunderbird.nightly
 runtime: org.freedesktop.Platform
 runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
@@ -22,7 +22,7 @@ finish-args:
   - --filesystem=xdg-download
   - --filesystem=xdg-run/speech-dispatcher:ro
   - --persist=.thunderbird-nightly
-  - --own-name=org.mozilla.Thunderbird.*
+  - --own-name=org.mozilla.thunderbird.nightly.*
   - --talk-name=org.gtk.vfs.*
   - --talk-name=org.a11y.Bus
   - --talk-name=org.freedesktop.FileManager1
@@ -36,7 +36,7 @@ add-extensions:
     directory: lib/ffmpeg
     version: "24.08"
     add-ld-path: .
-  org.mozilla.Thunderbird.Locale:
+  org.mozilla.thunderbird.nightly.Locale:
     directory: share/runtime/langpack
     version: nightly
     subdirectories: true
@@ -49,14 +49,14 @@ modules:
       - install -d /app/lib/thunderbird
       - cp -r thunderbird/. /app/lib/thunderbird/
       - install -D -m 755 thunderbird.sh /app/bin/thunderbird
-      - install -D -m 644 org.mozilla.Thunderbird.desktop /app/share/applications/org.mozilla.Thunderbird.desktop
-      - install -D -m 644 org.mozilla.Thunderbird.appdata.xml /app/share/metainfo/org.mozilla.Thunderbird.appdata.xml
-      - install -D -m 644 icons/16.png /app/share/icons/hicolor/16x16/apps/org.mozilla.Thunderbird.png
-      - install -D -m 644 icons/32.png /app/share/icons/hicolor/32x32/apps/org.mozilla.Thunderbird.png
-      - install -D -m 644 icons/48.png /app/share/icons/hicolor/48x48/apps/org.mozilla.Thunderbird.png
-      - install -D -m 644 icons/64.png /app/share/icons/hicolor/64x64/apps/org.mozilla.Thunderbird.png
-      - install -D -m 644 icons/128.png /app/share/icons/hicolor/128x128/apps/org.mozilla.Thunderbird.png
-      - install -D -m 644 icons/256.png /app/share/icons/hicolor/256x256/apps/org.mozilla.Thunderbird.png
+      - install -D -m 644 org.mozilla.thunderbird.nightly.desktop /app/share/applications/org.mozilla.thunderbird.nightly.desktop
+      - install -D -m 644 org.mozilla.thunderbird.nightly.metainfo.xml /app/share/metainfo/org.mozilla.thunderbird.nightly.metainfo.xml
+      - install -D -m 644 icons/16.png /app/share/icons/hicolor/16x16/apps/org.mozilla.thunderbird.nightly.png
+      - install -D -m 644 icons/32.png /app/share/icons/hicolor/32x32/apps/org.mozilla.thunderbird.nightly.png
+      - install -D -m 644 icons/48.png /app/share/icons/hicolor/48x48/apps/org.mozilla.thunderbird.nightly.png
+      - install -D -m 644 icons/64.png /app/share/icons/hicolor/64x64/apps/org.mozilla.thunderbird.nightly.png
+      - install -D -m 644 icons/128.png /app/share/icons/hicolor/128x128/apps/org.mozilla.thunderbird.nightly.png
+      - install -D -m 644 icons/256.png /app/share/icons/hicolor/256x256/apps/org.mozilla.thunderbird.nightly.png
       - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
       - mkdir -p ${FLATPAK_DEST}/share/runtime/langpack
     sources:
@@ -70,11 +70,11 @@ modules:
         dest-filename: thunderbird.sh
         commands:
           - export TMPDIR=$XDG_CACHE_HOME/tmp
-          - exec /app/lib/thunderbird/thunderbird --name org.mozilla.Thunderbird "$@"
+          - exec /app/lib/thunderbird/thunderbird --name org.mozilla.thunderbird.nightly "$@"
       - type: file
-        path: org.mozilla.Thunderbird.desktop
+        path: org.mozilla.thunderbird.nightly.desktop
       - type: file
-        path: org.mozilla.Thunderbird.appdata.xml
+        path: org.mozilla.thunderbird.nightly.metainfo.xml
       # Icons pinned to comm-central revision 0a9b4084679aa2d291ec4ea69dccac4219acb705 (2026-03-11).
       # Update the revision hash and sha256 values when bumping x-version.
       - type: file

@@ -7,9 +7,9 @@ Keywords=Internet;Email;Mail;News;
 Exec=thunderbird %U
 Terminal=false
 X-MultipleArgs=false
-Icon=org.mozilla.Thunderbird
+Icon=org.mozilla.thunderbird.nightly
 StartupNotify=true
-StartupWMClass=org.mozilla.Thunderbird
+StartupWMClass=org.mozilla.thunderbird.nightly
 Categories=Network;Email;
 MimeType=message/rfc822;x-scheme-handler/mailto;text/calendar;text/x-vcard;
 

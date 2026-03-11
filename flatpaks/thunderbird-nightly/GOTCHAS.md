@@ -25,11 +25,11 @@ Update the revision hash and all icon sha256 values.
 Uses `--persist=.thunderbird-nightly` (not `.thunderbird`). This keeps the nightly
 profile completely separate from any stable `org.mozilla.Thunderbird` installation.
 
-## `.appdata.xml` extension skips validation
+## `.metainfo.xml` extension
 
-The metainfo file uses the legacy `.appdata.xml` extension. The `appstreamcli validate`
-step in `build.yml` globs for `*.metainfo.xml` — this file is silently skipped by that
-validation step. Not a build error.
+The metainfo file uses the `.metainfo.xml` extension (renamed from `.appdata.xml` when the
+app-id was changed to `org.mozilla.thunderbird.nightly`). The `appstreamcli validate` step
+in `build.yml` globs for `*.metainfo.xml` — this file is now picked up by validation.
 
 ## No BaseApp dependency
 
