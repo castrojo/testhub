@@ -83,13 +83,29 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Detect build path
+      - name: Detect build path and arch support
         id: detect-path
         run: |
           if [[ -f "flatpaks/${{ matrix.app }}/release.yaml" ]]; then
             echo "mode=bundle-repack" >> "$GITHUB_OUTPUT"
+            # Check arches field: if set, skip unsupported arches
+            ARCHES=$(yq '.arches // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            if [[ -n "${ARCHES}" && "${ARCHES}" != "null" ]]; then
+              if ! echo "${ARCHES}" | grep -q "${{ matrix.arch }}"; then
+                echo "==> Skipping ${{ matrix.app }} on ${{ matrix.arch }} (not in arches: ${ARCHES})"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
           elif [[ -f "flatpaks/${{ matrix.app }}/manifest.yaml" ]]; then
             echo "mode=flatpak-builder" >> "$GITHUB_OUTPUT"
+            # Check x-arches field for manifest.yaml apps that are arch-restricted
+            ARCHES=$(yq '.x-arches // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            if [[ -n "${ARCHES}" && "${ARCHES}" != "null" ]]; then
+              if ! echo "${ARCHES}" | grep -q "${{ matrix.arch }}"; then
+                echo "==> Skipping ${{ matrix.app }} on ${{ matrix.arch }} (not in x-arches: ${ARCHES})"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
           else
             echo "ERROR: no manifest.yaml or release.yaml in flatpaks/${{ matrix.app }}/" >&2
             exit 1
@@ -106,13 +122,13 @@ jobs:
       #   - upload-artifact: false → we upload ourselves (correct artifact name per arch)
       - name: Read manifest branch (flatpak-builder path)
         id: manifest-meta
-        if: steps.detect-path.outputs.mode == 'flatpak-builder'
+        if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         run: |
           BRANCH=$(python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print(d.get('default-branch','stable'))" "flatpaks/${{ matrix.app }}/manifest.yaml")
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
       - name: Build with flatpak-builder (cached)
-        if: steps.detect-path.outputs.mode == 'flatpak-builder'
+        if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         uses: flatpak/flatpak-github-actions/flatpak-builder@92ae9851ad316786193b1fd3f40c4b51eb5cb101 # v6
         with:
           manifest-path: flatpaks/${{ matrix.app }}/manifest.yaml
@@ -123,7 +139,7 @@ jobs:
           branch: ${{ steps.manifest-meta.outputs.branch }}
 
       - name: Export OCI bundle (flatpak-builder path)
-        if: steps.detect-path.outputs.mode == 'flatpak-builder'
+        if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         run: |
           APP_ID=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('flatpaks/${{ matrix.app }}/manifest.yaml')); print(d['app-id'])")
           [[ -n "${APP_ID}" && "${APP_ID}" != "null" ]] || { echo "ERROR: could not determine app-id" >&2; exit 1; }
@@ -139,7 +155,7 @@ jobs:
       # Downloads upstream .flatpak, verifies sha256, imports into OSTree, exports OCI.
       # No flatpak-builder invocation — upstream build is trusted as-is.
       - name: Download and verify upstream bundle
-        if: steps.detect-path.outputs.mode == 'bundle-repack'
+        if: steps.detect-path.outputs.mode == 'bundle-repack' && steps.detect-path.outputs.skip != 'true'
         run: |
           DESC="flatpaks/${{ matrix.app }}/release.yaml"
           APP_ID=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('${DESC}')); print(d['app-id'])")
@@ -168,7 +184,7 @@ jobs:
           echo "==> sha256 OK: ${ACTUAL_SHA}"
 
       - name: Import bundle and export OCI (bundle-repack path)
-        if: steps.detect-path.outputs.mode == 'bundle-repack'
+        if: steps.detect-path.outputs.mode == 'bundle-repack' && steps.detect-path.outputs.skip != 'true'
         run: |
           ARCH="${{ matrix.arch }}"
           REF="app/${APP_ID}/${ARCH}/stable"
@@ -180,6 +196,7 @@ jobs:
           flatpak build-bundle --oci --arch="${ARCH}" repo "${{ matrix.app }}.oci" "${APP_ID}" stable
 
       - name: Upload OCI artifact
+        if: steps.detect-path.outputs.skip != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: oci-${{ matrix.app }}-${{ matrix.arch }}
@@ -212,7 +229,32 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Check arch support
+        id: arch-check
+        run: |
+          # Mirror the arch-exclusion logic from the build job.
+          # release.yaml apps: check arches field.
+          # manifest.yaml apps: check x-arches field.
+          if [[ -f "flatpaks/${{ matrix.app }}/release.yaml" ]]; then
+            ARCHES=$(yq '.arches // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            if [[ -n "${ARCHES}" && "${ARCHES}" != "null" ]]; then
+              if ! echo "${ARCHES}" | grep -q "${{ matrix.arch }}"; then
+                echo "==> Skipping ${{ matrix.app }} push on ${{ matrix.arch }} (not in arches: ${ARCHES})"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+          elif [[ -f "flatpaks/${{ matrix.app }}/manifest.yaml" ]]; then
+            ARCHES=$(yq '.x-arches // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            if [[ -n "${ARCHES}" && "${ARCHES}" != "null" ]]; then
+              if ! echo "${ARCHES}" | grep -q "${{ matrix.arch }}"; then
+                echo "==> Skipping ${{ matrix.app }} push on ${{ matrix.arch }} (not in x-arches: ${ARCHES})"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+          fi
+
       - name: Read release metadata
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           # GITHUB_ENV is job-scoped — re-derive version here from source descriptors.
           # Bundle-repack: read version + url from release.yaml.
@@ -237,12 +279,14 @@ jobs:
           fi
 
       - name: Download OCI artifact
+        if: steps.arch-check.outputs.skip != 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: oci-${{ matrix.app }}-${{ matrix.arch }}
           path: ${{ matrix.app }}.oci
 
       - name: Split layers with chunkah
+        if: steps.arch-check.outputs.skip != 'true'
         env:
           APP: ${{ matrix.app }}
           CHUNKAH_SPLITTER: https://github.com/coreos/chunkah/releases/download/v0.3.0/Containerfile.splitter
@@ -315,6 +359,7 @@ jobs:
 
       - name: Push to ghcr.io with zstd:chunked
         id: push
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           ARCH="${{ matrix.arch }}"
           case "${ARCH}" in
@@ -337,9 +382,11 @@ jobs:
           echo "==> Pushed staging tag ${TARGET} @ ${DIGEST} — layers: ${LAYER_COUNT}"
 
       - name: Install cosign
+        if: steps.arch-check.outputs.skip != 'true'
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Log in to ghcr.io for cosign
+        if: steps.arch-check.outputs.skip != 'true'
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
@@ -347,11 +394,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign image with cosign
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign sign --yes \
             ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Generate SBOM
+        if: steps.arch-check.outputs.skip != 'true'
         uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
         with:
           image: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
@@ -360,6 +409,7 @@ jobs:
           artifact-name: sbom-${{ matrix.app }}-${{ matrix.arch }}
 
       - name: Attest SBOM to registry
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign attest --yes \
             --predicate sbom-${{ matrix.app }}.spdx.json \
@@ -367,6 +417,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Verify cosign signature
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign verify \
             --certificate-identity=https://github.com/castrojo/jorgehub/.github/workflows/build.yml@refs/heads/main \
@@ -374,6 +425,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Verify SBOM attestation
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           set -o pipefail
           cosign verify-attestation \
@@ -384,71 +436,15 @@ jobs:
             | jq '.payload | @base64d | fromjson | .predicateType'
 
       - name: Login to ghcr.io for skopeo inspect
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           # skopeo does not inherit podman's login session — explicit login required
           # Must run before any skopeo inspect step (including Verify image index shape)
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             skopeo login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
 
-      - name: Create OCI image indexes
-        run: |
-          APP="${{ matrix.app }}"
-          ARCH="${{ matrix.arch }}"
-          OWNER="${{ github.repository_owner }}"
-          [[ -f /tmp/digest.txt ]] || { echo "ERROR: /tmp/digest.txt not found — Push step may not have run" >&2; exit 1; }
-          DIGEST=$(cat /tmp/digest.txt)
-          [[ -n "${DIGEST}" ]] || { echo "ERROR: /tmp/digest.txt is empty — per-arch push may have failed" >&2; exit 1; }
-
-          case "${ARCH}" in
-            x86_64)  OCI_ARCH="amd64" ;;
-            aarch64) OCI_ARCH="arm64" ;;
-            *)       echo "ERROR: unknown arch ${ARCH} — add OCI_ARCH mapping to case statement" >&2; exit 1 ;;
-          esac
-
-          # latest index — always (build.yml is the sole manager of the latest tag)
-          podman manifest rm "localhost/${APP}:latest" 2>/dev/null || true
-          podman manifest create "localhost/${APP}:latest"
-          podman manifest add \
-            --arch "${OCI_ARCH}" --os linux \
-            "localhost/${APP}:latest" \
-            "docker://ghcr.io/${OWNER}/${APP}@${DIGEST}"
-          # Push index only — per-arch blobs already in registry, --all not needed
-          podman manifest push \
-            --format oci \
-            "localhost/${APP}:latest" \
-            "docker://ghcr.io/${OWNER}/${APP}:latest"
-          echo "==> Pushed image index ghcr.io/${OWNER}/${APP}:latest → ${ARCH} @ ${DIGEST}"
-
-          # version index — bundle-repack apps only (VERSION set in GITHUB_ENV)
-          if [[ -n "${VERSION:-}" ]]; then
-            podman manifest rm "localhost/${APP}:${VERSION}" 2>/dev/null || true
-            podman manifest create "localhost/${APP}:${VERSION}"
-            podman manifest add \
-              --arch "${OCI_ARCH}" --os linux \
-              "localhost/${APP}:${VERSION}" \
-              "docker://ghcr.io/${OWNER}/${APP}@${DIGEST}"
-            # Push index only — per-arch blobs already in registry, --all not needed
-            podman manifest push \
-              --format oci \
-              "localhost/${APP}:${VERSION}" \
-              "docker://ghcr.io/${OWNER}/${APP}:${VERSION}"
-            echo "==> Pushed image index ghcr.io/${OWNER}/${APP}:${VERSION} → ${ARCH} @ ${DIGEST}"
-          fi
-
-      - name: Verify image index shape
-        run: |
-          APP="${{ matrix.app }}"
-          OWNER="${{ github.repository_owner }}"
-          RAW=$(skopeo inspect --raw "docker://ghcr.io/${OWNER}/${APP}:latest")
-          MEDIA_TYPE=$(echo "${RAW}" | jq -r '.mediaType')
-          [[ "${MEDIA_TYPE}" == "application/vnd.oci.image.index.v1+json" ]] \
-            || { echo "ERROR: expected OCI index, got ${MEDIA_TYPE}" >&2; exit 1; }
-          COUNT=$(echo "${RAW}" | jq '.manifests | length')
-          [[ "${COUNT}" -ge 1 ]] \
-            && echo "==> latest index has ${COUNT} platform(s) [${MEDIA_TYPE}]" \
-            || { echo "ERROR: latest is not an image index" >&2; exit 1; }
-
       - name: Verify labels on ghcr.io
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           skopeo inspect \
             "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${STAGING_TAG}" \
@@ -464,6 +460,7 @@ jobs:
           "
 
       - name: Verify all layers are zstd:chunked
+        if: steps.arch-check.outputs.skip != 'true'
         run: |
           RESULTS=$(skopeo inspect --raw \
             "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${STAGING_TAG}" \
@@ -474,6 +471,7 @@ jobs:
             || echo "==> All ${LAYER_COUNT} layers are zstd:chunked"
 
       - name: Upload digest artifact
+        if: steps.arch-check.outputs.skip != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digest-${{ matrix.app }}-${{ matrix.arch }}
@@ -481,11 +479,134 @@ jobs:
           retention-days: 1
 
       - name: Upload staging tag artifact
+        if: steps.arch-check.outputs.skip != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: staging-tag-${{ matrix.app }}-${{ matrix.arch }}
           path: /tmp/staging-tag.txt
           retention-days: 1
+
+  # ── Merge per-arch digests into a single OCI image index ─────────────────
+  # Runs after ALL push matrix jobs complete (both x86_64 and aarch64).
+  # Produces the :latest and :vX.Y.Z manifest lists that point to per-arch
+  # staging digests. A single job running once per app avoids the race where
+  # concurrent per-arch jobs each overwrote :latest with a 1-platform manifest.
+  merge-index:
+    needs: [detect, push]
+    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download per-arch digest artifacts
+        run: |
+          # Download digest artifacts for each arch — skip if not present (arch not supported).
+          for ARCH in x86_64 aarch64; do
+            ARTIFACT="digest-${{ matrix.app }}-${ARCH}"
+            mkdir -p "/tmp/digests/${ARCH}"
+            if gh api "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+                --jq ".artifacts[] | select(.name == \"${ARTIFACT}\") | .id" \
+                | grep -q .; then
+              gh run download "${{ github.run_id }}" \
+                --name "${ARTIFACT}" \
+                --dir "/tmp/digests/${ARCH}" 2>/dev/null || true
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version (bundle-repack apps only)
+        id: version
+        run: |
+          if [[ -f "flatpaks/${{ matrix.app }}/release.yaml" ]]; then
+            VERSION=$(yq '.version // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${VERSION}" && "${VERSION}" != "null" ]] && echo "version=${VERSION}" >> "$GITHUB_OUTPUT" || true
+          fi
+
+      - name: Build and push OCI image indexes
+        run: |
+          APP="${{ matrix.app }}"
+          OWNER="${{ github.repository_owner }}"
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            podman login ghcr.io -u "${OWNER}" --password-stdin
+
+          # Collect per-arch digests that were actually built and pushed.
+          declare -A ARCH_DIGESTS
+          for ARCH in x86_64 aarch64; do
+            DIGEST_FILE="/tmp/digests/${ARCH}/digest.txt"
+            if [[ -f "${DIGEST_FILE}" ]]; then
+              DIGEST=$(cat "${DIGEST_FILE}")
+              [[ -n "${DIGEST}" ]] && ARCH_DIGESTS[${ARCH}]="${DIGEST}"
+            fi
+          done
+
+          if [[ "${#ARCH_DIGESTS[@]}" -eq 0 ]]; then
+            echo "ERROR: no per-arch digests found for ${APP}" >&2
+            exit 1
+          fi
+
+          # Build manifest list for :latest
+          podman manifest rm "localhost/${APP}:latest" 2>/dev/null || true
+          podman manifest create "localhost/${APP}:latest"
+          for ARCH in "${!ARCH_DIGESTS[@]}"; do
+            case "${ARCH}" in
+              x86_64)  OCI_ARCH="amd64" ;;
+              aarch64) OCI_ARCH="arm64" ;;
+            esac
+            podman manifest add \
+              --arch "${OCI_ARCH}" --os linux \
+              "localhost/${APP}:latest" \
+              "docker://ghcr.io/${OWNER}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
+            echo "==> Added ${ARCH} (${OCI_ARCH}) @ ${ARCH_DIGESTS[${ARCH}]}"
+          done
+          podman manifest push --format oci \
+            "localhost/${APP}:latest" \
+            "docker://ghcr.io/${OWNER}/${APP}:latest"
+          echo "==> Pushed ghcr.io/${OWNER}/${APP}:latest (${#ARCH_DIGESTS[@]} platform(s))"
+
+          # Build manifest list for version tag (bundle-repack apps only)
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ -n "${VERSION}" ]]; then
+            podman manifest rm "localhost/${APP}:${VERSION}" 2>/dev/null || true
+            podman manifest create "localhost/${APP}:${VERSION}"
+            for ARCH in "${!ARCH_DIGESTS[@]}"; do
+              case "${ARCH}" in
+                x86_64)  OCI_ARCH="amd64" ;;
+                aarch64) OCI_ARCH="arm64" ;;
+              esac
+              podman manifest add \
+                --arch "${OCI_ARCH}" --os linux \
+                "localhost/${APP}:${VERSION}" \
+                "docker://ghcr.io/${OWNER}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
+            done
+            podman manifest push --format oci \
+              "localhost/${APP}:${VERSION}" \
+              "docker://ghcr.io/${OWNER}/${APP}:${VERSION}"
+            echo "==> Pushed ghcr.io/${OWNER}/${APP}:${VERSION} (${#ARCH_DIGESTS[@]} platform(s))"
+          fi
+
+      - name: Verify image index shape
+        run: |
+          APP="${{ matrix.app }}"
+          OWNER="${{ github.repository_owner }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            skopeo login ghcr.io -u "${OWNER}" --password-stdin
+          RAW=$(skopeo inspect --raw "docker://ghcr.io/${OWNER}/${APP}:latest")
+          MEDIA_TYPE=$(echo "${RAW}" | jq -r '.mediaType')
+          [[ "${MEDIA_TYPE}" == "application/vnd.oci.image.index.v1+json" ]] \
+            || { echo "ERROR: expected OCI index, got ${MEDIA_TYPE}" >&2; exit 1; }
+          COUNT=$(echo "${RAW}" | jq '.manifests | length')
+          [[ "${COUNT}" -ge 1 ]] \
+            && echo "==> latest index has ${COUNT} platform(s) [${MEDIA_TYPE}]" \
+            || { echo "ERROR: latest is not an image index" >&2; exit 1; }
 
   # ── Set package description ───────────────────────────────────────────────
   # Runs after push completes.
@@ -502,7 +623,7 @@ jobs:
   # per build per arch) and are cleaned up manually via the cleanup.yml
   # workflow when needed.
   cleanup:
-    needs: [detect, push]
+    needs: [detect, push, merge-index]
     if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     permissions:

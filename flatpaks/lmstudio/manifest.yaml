@@ -4,6 +4,8 @@ runtime-version: "49"
 sdk: org.gnome.Sdk
 default-branch: stable
 x-version: "0.4.7"
+# x-arches: upstream only ships x64 installer; no arm64 available
+x-arches: [x86_64]
 command: lm-studio
 finish-args:
   # GPU compute for AI inference (CUDA, ROCm, Vulkan) — device=dri alone is not enough

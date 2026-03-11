@@ -75,6 +75,12 @@ modules:
         strip-components: 0
         only-arches:
           - x86_64
+      - type: archive
+        url: https://download-installer.cdn.mozilla.net/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz
+        sha256: 9672e3676b91523b7783b07d6679e95a140a4a05ce9ba3cc9d9b4d90a5c7acaf
+        strip-components: 0
+        only-arches:
+          - aarch64
       - type: script
         dest-filename: firefox.sh
         commands:

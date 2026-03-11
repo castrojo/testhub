@@ -1,5 +1,7 @@
 app-id: io.github.block.Goose
 version: v1.27.2
+# arches: upstream only ships x86_64 .flatpak; no aarch64 bundle available
+arches: [x86_64]
 url: https://github.com/block/goose/releases/download/v1.27.2/io.github.block.Goose_stable_x86_64.flatpak
 sha256: f74d47cc61bb0e6d1fc41327fcf3b359408158c24216d96782b2854cb3599765
 title: Goose
