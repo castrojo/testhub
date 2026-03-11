@@ -129,3 +129,4 @@ modules:
         sha256: f4c96eb5468e22751093e9c78242a8c344d3b35772e65cb08d060f547e3cad56
         dest: icons
         dest-filename: symbolic.svg
+
