@@ -342,7 +342,7 @@ jobs:
 
       - name: Sign image with cosign
         run: |
-          REGISTRY_AUTH_FILE="${HOME}/.config/containers/auth.json" \
+          export REGISTRY_AUTH_FILE="${HOME}/.config/containers/auth.json"
           cosign sign --yes \
             ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
 
@@ -356,7 +356,7 @@ jobs:
 
       - name: Attest SBOM to registry
         run: |
-          REGISTRY_AUTH_FILE="${HOME}/.config/containers/auth.json" \
+          export REGISTRY_AUTH_FILE="${HOME}/.config/containers/auth.json"
           cosign attest --yes \
             --predicate sbom-${{ matrix.app }}.spdx.json \
             --type spdxjson \
