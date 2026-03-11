@@ -27,8 +27,8 @@ modules:
       # Extract deb archive
       - ar x LM-Studio-0.4.7-2-x64.deb
       - tar xf data.tar.xz
-      # Copy app files — directory name has a space, use shell glob carefully
-      - cp -a "opt/LM Studio/." /app/lm-studio/
+      # Copy app files — renamed from "opt/LM Studio/" (space) to "opt/LM-Studio/" (hyphen) in 0.4.7
+      - cp -a "opt/LM-Studio/." /app/lm-studio/
       # Install desktop file
       - install -Dm644 usr/share/applications/lm-studio.desktop /app/share/applications/ai.lmstudio.LMStudio.desktop
       # Fix desktop file: update Exec, Icon, and remove non-standard lowercase 'category' key
