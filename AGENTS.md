@@ -16,6 +16,19 @@ Ghostty is the first app and the proof-of-concept for the full pipeline.
   ```
 - `gh auth login` required for `just build` (ghcr.io push); NOT needed for `just loop`
 
+## Development Policy
+
+**All development and testing MUST be verified locally via devaipod before CI.**
+
+```bash
+~/.cargo/bin/devaipod run ~/src/jorgehub --host -c 'just loop <app>'
+```
+
+- `just loop <app>` is the mandatory first test for any change — builds, chunkah split, push to local registry (:5000), label verification
+- CI (`just build` / GitHub Actions) runs ONLY after `just loop` passes locally
+- Never trigger CI as a substitute for local testing
+- devaipod uses the gnome-49 container with --privileged, matching the CI environment exactly
+
 ## Build Commands
 
 ```bash
