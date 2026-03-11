@@ -333,8 +333,8 @@ jobs:
             --label "org.opencontainers.image.version=${VERSION:-}" \
             --label "org.opencontainers.image.source=${UPSTREAM_URL:-}" \
             --label "org.opencontainers.image.created=${CREATED}" \
-            --label "org.opencontainers.image.vendor=castrojo" \
-            --label "org.opencontainers.image.url=https://github.com/castrojo/jorgehub" \
+            --label "org.opencontainers.image.vendor=${{ github.repository_owner }}" \
+            --label "org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             "${CTR}"
           # title/description/license only exist in release.yaml (bundle-repack path)
@@ -440,7 +440,7 @@ jobs:
             *)       echo "ERROR: unknown arch ${ARCH}" >&2; exit 1 ;;
           esac
           STAGING_TAG="sha-${{ github.sha }}-${OCI_ARCH}"
-          TARGET="ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${STAGING_TAG}"
+          TARGET="ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}"
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
           podman push \
@@ -469,13 +469,13 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign sign --yes \
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Generate SBOM
         if: steps.arch-check.outputs.skip != 'true'
         uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
         with:
-          image: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
+          image: ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
           format: spdx-json
           output-file: sbom-${{ matrix.app }}.spdx.json
           artifact-name: sbom-${{ matrix.app }}-${{ matrix.arch }}
@@ -486,15 +486,15 @@ jobs:
           cosign attest --yes \
             --predicate sbom-${{ matrix.app }}.spdx.json \
             --type spdxjson \
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Verify cosign signature
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign verify \
-            --certificate-identity=https://github.com/castrojo/jorgehub/.github/workflows/build.yml@refs/heads/main \
+            --certificate-identity=${{ github.server_url }}/${{ github.repository }}/.github/workflows/build.yml@refs/heads/main \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
 
       - name: Verify SBOM attestation
         if: steps.arch-check.outputs.skip != 'true'
@@ -502,9 +502,9 @@ jobs:
           set -o pipefail
           cosign verify-attestation \
             --type spdxjson \
-            --certificate-identity=https://github.com/castrojo/jorgehub/.github/workflows/build.yml@refs/heads/main \
+            --certificate-identity=${{ github.server_url }}/${{ github.repository }}/.github/workflows/build.yml@refs/heads/main \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}@${{ env.DIGEST }} \
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }} \
             | jq '.payload | @base64d | fromjson | .predicateType'
 
       - name: Login to ghcr.io for skopeo inspect
@@ -519,7 +519,7 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           skopeo inspect \
-            "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}" \
             | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
@@ -535,7 +535,7 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           RESULTS=$(skopeo inspect --raw \
-            "docker://ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}" \
             | jq -r '.layers[] | "Layer \(.digest[:19]): chunked=\((.annotations // {}) | has("io.github.containers.zstd-chunked.manifest-checksum"))"')
           echo "${RESULTS}"
           echo "${RESULTS}" | grep -q "chunked=false" \
@@ -606,6 +606,7 @@ jobs:
         run: |
           APP="${{ matrix.app }}"
           OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.repository }}"
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u "${OWNER}" --password-stdin
@@ -636,13 +637,13 @@ jobs:
             podman manifest add \
               --arch "${OCI_ARCH}" --os linux \
               "localhost/${APP}:latest" \
-              "docker://ghcr.io/${OWNER}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
+              "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
             echo "==> Added ${ARCH} (${OCI_ARCH}) @ ${ARCH_DIGESTS[${ARCH}]}"
           done
           podman manifest push --format oci \
             "localhost/${APP}:latest" \
-            "docker://ghcr.io/${OWNER}/${APP}:latest"
-          echo "==> Pushed ghcr.io/${OWNER}/${APP}:latest (${#ARCH_DIGESTS[@]} platform(s))"
+            "docker://ghcr.io/${REPO}/${APP}:latest"
+          echo "==> Pushed ghcr.io/${REPO}/${APP}:latest (${#ARCH_DIGESTS[@]} platform(s))"
 
           # Build manifest list for version tag (bundle-repack apps only)
           VERSION="${{ steps.version.outputs.version }}"
@@ -657,21 +658,22 @@ jobs:
               podman manifest add \
                 --arch "${OCI_ARCH}" --os linux \
                 "localhost/${APP}:${VERSION}" \
-                "docker://ghcr.io/${OWNER}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
+                "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
             done
             podman manifest push --format oci \
               "localhost/${APP}:${VERSION}" \
-              "docker://ghcr.io/${OWNER}/${APP}:${VERSION}"
-            echo "==> Pushed ghcr.io/${OWNER}/${APP}:${VERSION} (${#ARCH_DIGESTS[@]} platform(s))"
+              "docker://ghcr.io/${REPO}/${APP}:${VERSION}"
+            echo "==> Pushed ghcr.io/${REPO}/${APP}:${VERSION} (${#ARCH_DIGESTS[@]} platform(s))"
           fi
 
       - name: Verify image index shape
         run: |
           APP="${{ matrix.app }}"
           OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.repository }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             skopeo login ghcr.io -u "${OWNER}" --password-stdin
-          RAW=$(skopeo inspect --raw "docker://ghcr.io/${OWNER}/${APP}:latest")
+          RAW=$(skopeo inspect --raw "docker://ghcr.io/${REPO}/${APP}:latest")
           MEDIA_TYPE=$(echo "${RAW}" | jq -r '.mediaType')
           [[ "${MEDIA_TYPE}" == "application/vnd.oci.image.index.v1+json" ]] \
             || { echo "ERROR: expected OCI index, got ${MEDIA_TYPE}" >&2; exit 1; }
@@ -717,13 +719,16 @@ jobs:
       - name: Set package description
         run: |
           APP="${{ matrix.app }}"
+          REPO_NAME="${{ github.event.repository.name }}"
           DESC_FILE="flatpaks/${APP}/release.yaml"
           if [[ -f "${DESC_FILE}" ]]; then
             DESCRIPTION=$(yq '.description' "${DESC_FILE}")
             [[ "${DESCRIPTION}" != "null" && -n "${DESCRIPTION}" ]] || { echo "==> No description in release.yaml, skipping"; exit 0; }
+            # Package name under owner is "reponame/appname" — URL-encode the slash.
             # Note: PATCH /user/packages/container/<name> returns 404 for user-scoped packages
             # (same limitation as visibility — web UI only). Best-effort, non-fatal.
-            if gh api --method PATCH "/user/packages/container/${APP}" \
+            ENCODED_NAME="${REPO_NAME}%2F${APP}"
+            if gh api --method PATCH "/user/packages/container/${ENCODED_NAME}" \
                 -f description="${DESCRIPTION}" 2>/dev/null; then
               echo "==> Set package description: ${DESCRIPTION}"
             else

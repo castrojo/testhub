@@ -119,8 +119,8 @@ jobs:
             --label "org.opencontainers.image.version=${{ inputs.version }}" \
             --label "org.opencontainers.image.source=${{ inputs.url }}" \
             --label "org.opencontainers.image.created=${CREATED}" \
-            --label "org.opencontainers.image.vendor=castrojo" \
-            --label "org.opencontainers.image.url=https://github.com/castrojo/jorgehub" \
+            --label "org.opencontainers.image.vendor=${{ github.repository_owner }}" \
+            --label "org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             "${CTR}"
           [[ -n "${TITLE}" && "${TITLE}" != "null" ]] && buildah config --label "org.opencontainers.image.title=${TITLE}" "${CTR}" || true
@@ -166,7 +166,7 @@ jobs:
             *)       echo "ERROR: unknown arch ${ARCH}" >&2; exit 1 ;;
           esac
           STAGING_TAG="sha-${{ github.run_id }}-${OCI_ARCH}"
-          TARGET="ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${STAGING_TAG}"
+          TARGET="ghcr.io/${{ github.repository }}/${{ inputs.app }}:${STAGING_TAG}"
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
           podman push \
@@ -182,7 +182,7 @@ jobs:
           VERSION="${{ inputs.version }}"
           APP="${{ inputs.app }}"
           ARCH="${{ matrix.arch }}"
-          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.repository }}"
           DIGEST=$(cat /tmp/digest.txt)
           [[ -n "${DIGEST}" ]] || { echo "ERROR: /tmp/digest.txt is empty — per-arch push may have failed" >&2; exit 1; }
 
@@ -199,14 +199,14 @@ jobs:
           podman manifest add \
             --arch "${OCI_ARCH}" --os linux \
             "localhost/${APP}:${VERSION}" \
-            "docker://ghcr.io/${OWNER}/${APP}@${DIGEST}"
+            "docker://ghcr.io/${REPO}/${APP}@${DIGEST}"
 
           # Push index only — per-arch blobs already in registry, --all not needed
           podman manifest push \
             --format oci \
             "localhost/${APP}:${VERSION}" \
-            "docker://ghcr.io/${OWNER}/${APP}:${VERSION}"
-          echo "==> Pushed image index ghcr.io/${OWNER}/${APP}:${VERSION} → ${ARCH} @ ${DIGEST}"
+            "docker://ghcr.io/${REPO}/${APP}:${VERSION}"
+          echo "==> Pushed image index ghcr.io/${REPO}/${APP}:${VERSION} → ${ARCH} @ ${DIGEST}"
 
       - name: Login to ghcr.io for skopeo inspect
         run: |
@@ -216,7 +216,7 @@ jobs:
       - name: Verify labels on ghcr.io
         run: |
           skopeo inspect \
-            "docker://ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ inputs.app }}:${STAGING_TAG}" \
             | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
@@ -231,7 +231,7 @@ jobs:
       - name: Verify all layers are zstd:chunked
         run: |
           RESULTS=$(skopeo inspect --raw \
-            "docker://ghcr.io/${{ github.repository_owner }}/${{ inputs.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ inputs.app }}:${STAGING_TAG}" \
             | jq -r '.layers[] | "Layer \(.digest[:19]): chunked=\((.annotations // {}) | has("io.github.containers.zstd-chunked.manifest-checksum"))"')
           echo "${RESULTS}"
           echo "${RESULTS}" | grep -q "chunked=false" \
@@ -241,27 +241,28 @@ jobs:
       - name: Retag content manifest and delete staging tag
         run: |
           APP="${{ inputs.app }}"
-          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.repository }}"
+          REPO_NAME="${{ github.event.repository.name }}"
           # ghcr.io permanently deletes a manifest when its version is deleted.
           # OCI image indexes reference content manifests by digest — if the content
           # manifest version is deleted, the index breaks ("manifest unknown").
           # Fix: retag content manifest as "content-<digest_short>" before deletion,
           # so the manifest stays alive under a permanent non-user-facing tag.
-          DIGEST=$(gh api "/user/packages/container/${APP}/versions" \
+          DIGEST=$(gh api "/user/packages/container/${REPO_NAME}%2F${APP}/versions" \
             --jq ".[] | select(.metadata.container.tags[] == \"${STAGING_TAG}\") | .name" \
             || true)
           if [[ -n "${DIGEST}" ]]; then
             DIGEST_SHORT="${DIGEST:7:12}"
             CONTENT_TAG="content-${DIGEST_SHORT}"
             skopeo copy \
-              "docker://ghcr.io/${OWNER}/${APP}@${DIGEST}" \
-              "docker://ghcr.io/${OWNER}/${APP}:${CONTENT_TAG}"
+              "docker://ghcr.io/${REPO}/${APP}@${DIGEST}" \
+              "docker://ghcr.io/${REPO}/${APP}:${CONTENT_TAG}"
             echo "==> Retagged content manifest ${DIGEST} as ${CONTENT_TAG}"
           else
             echo "WARNING: staging tag ${STAGING_TAG} not found — skipping retag"
           fi
           # Now safe to delete the staging tag version
-          VERSION_ID=$(gh api "/user/packages/container/${APP}/versions" \
+          VERSION_ID=$(gh api "/user/packages/container/${REPO_NAME}%2F${APP}/versions" \
             --jq ".[] | select(.metadata.container.tags[] == \"${STAGING_TAG}\") | .id" \
             || true)
           if [[ $(echo "${VERSION_ID}" | grep -c .) -gt 1 ]]; then
@@ -269,7 +270,7 @@ jobs:
             exit 1
           fi
           if [[ -n "${VERSION_ID}" ]]; then
-            gh api --method DELETE "/user/packages/container/${APP}/versions/${VERSION_ID}"
+            gh api --method DELETE "/user/packages/container/${REPO_NAME}%2F${APP}/versions/${VERSION_ID}"
             echo "==> Deleted staging tag ${STAGING_TAG} (version ID ${VERSION_ID})"
           else
             echo "WARNING: staging tag ${STAGING_TAG} not found — may already be deleted"

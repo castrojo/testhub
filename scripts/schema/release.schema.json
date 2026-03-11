@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "jorgehub release.yaml schema",
+  "title": "release.yaml schema",
   "type": "object",
   "required": ["app-id", "version", "url", "sha256"],
   "properties": {

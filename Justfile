@@ -21,7 +21,8 @@ _apply-oci-labels image-id version="" url="" release-desc="":
     URL="{{url}}"
     RELEASE_DESC="{{release-desc}}"
     CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    GH_OWNER="${GITHUB_REPOSITORY_OWNER:-castrojo}"
+    GH_OWNER="${GITHUB_REPOSITORY_OWNER:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*\)/.*|\1|')}"
+    GH_REPO="${GITHUB_REPOSITORY:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*/[^/.]*\).*|\1|')}"
     # buildah config operates on working containers, not image IDs.
     # Pattern: from → config → commit → rm; output new image ID on stdout for caller to capture.
     CTR=$(buildah from "${IMAGE_ID}")
@@ -31,7 +32,7 @@ _apply-oci-labels image-id version="" url="" release-desc="":
       --label "org.opencontainers.image.source=${URL}" \
       --label "org.opencontainers.image.created=${CREATED}" \
       --label "org.opencontainers.image.vendor=${GH_OWNER}" \
-      --label "org.opencontainers.image.url=https://github.com/${GH_OWNER}/jorgehub" \
+      --label "org.opencontainers.image.url=https://github.com/${GH_REPO}" \
       "${CTR}"
     if [[ -n "${VERSION}" && -f "${RELEASE_DESC}" ]]; then
         TITLE=$(yq '.title // ""' "${RELEASE_DESC}")
@@ -153,6 +154,8 @@ build app="ghostty":
     fi
 
     # === Common: load into podman, run chunkah, verify, push ===
+    GH_OWNER="${GITHUB_REPOSITORY_OWNER:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*\)/.*|\1|')}"
+    GH_REPO="${GITHUB_REPOSITORY:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*/[^/.]*\).*|\1|')}"
     IMAGE_ID=$(podman pull --quiet "oci:./${OCI_DIR}")
     echo "==> Single-layer image: ${IMAGE_ID}"
     # Apply OCI standard labels before chunkah — labels added after CHUNKAH_CONFIG_STR is captured are lost
@@ -186,11 +189,11 @@ build app="ghostty":
     skopeo copy --dest-tls-verify=false \
       --digestfile "/tmp/${APP}-local-digest.txt" \
       "containers-storage:${CHUNKED_ID}" \
-      "docker://localhost:5000/castrojo/jorgehub/${APP}:latest"
+      "docker://localhost:5000/${GH_REPO}/${APP}:latest"
     LOCAL_DIGEST=$(cat "/tmp/${APP}-local-digest.txt")
     echo "==> Local digest: ${LOCAL_DIGEST}"
     skopeo inspect --tls-verify=false \
-      "docker://localhost:5000/castrojo/jorgehub/${APP}@${LOCAL_DIGEST}" \
+      "docker://localhost:5000/${GH_REPO}/${APP}@${LOCAL_DIGEST}" \
       | jq -e '
         .Labels["org.flatpak.ref"] // error("MISSING: org.flatpak.ref"),
         .Labels["org.flatpak.metadata"] // error("MISSING: org.flatpak.metadata"),
@@ -199,11 +202,10 @@ build app="ghostty":
       ' > /dev/null \
       && echo "All required labels present."
     # Push to ghcr.io with zstd:chunked
-    GH_OWNER="${GITHUB_REPOSITORY_OWNER:-castrojo}"
     gh auth token | podman login ghcr.io --username "${GH_OWNER}" --password-stdin
     podman push --compression-format=zstd:chunked \
       --digestfile "/tmp/${APP}-ghcr-digest.txt" \
-      "${CHUNKED_ID}" "docker://ghcr.io/${GH_OWNER}/${APP}:latest-${ARCH}"
+      "${CHUNKED_ID}" "docker://ghcr.io/${GH_REPO}/${APP}:latest-${ARCH}"
     GHCR_DIGEST=$(cat "/tmp/${APP}-ghcr-digest.txt")
     echo "==> ghcr.io digest: ${GHCR_DIGEST}"
     # Version and stable tags — set for bundle-repack; for manifest.yaml apps, requires x-version field
@@ -211,15 +213,15 @@ build app="ghostty":
         echo "==> Pushing version tag: ${VERSION}-${ARCH}"
         skopeo copy --compression-format=zstd:chunked --dest-creds "${GH_OWNER}:$(gh auth token)" \
           "containers-storage:${CHUNKED_ID}" \
-          "docker://ghcr.io/${GH_OWNER}/${APP}:${VERSION}-${ARCH}"
+          "docker://ghcr.io/${GH_REPO}/${APP}:${VERSION}-${ARCH}"
         echo "==> Pushing stable tag"
         skopeo copy --compression-format=zstd:chunked --dest-creds "${GH_OWNER}:$(gh auth token)" \
           "containers-storage:${CHUNKED_ID}" \
-          "docker://ghcr.io/${GH_OWNER}/${APP}:stable-${ARCH}"
+          "docker://ghcr.io/${GH_REPO}/${APP}:stable-${ARCH}"
         echo "==> Tags pushed: latest-${ARCH}, ${VERSION}-${ARCH}, stable-${ARCH}"
     fi
     # Verify ALL layers are zstd:chunked — fail if any are not
-    LAYER_RESULTS=$(skopeo inspect --raw "docker://ghcr.io/${GH_OWNER}/${APP}:latest-${ARCH}" \
+    LAYER_RESULTS=$(skopeo inspect --raw "docker://ghcr.io/${GH_REPO}/${APP}:latest-${ARCH}" \
       | jq -r '.layers[] | "Layer \(.digest[:19]): mediaType=\(.mediaType) chunked=\((.annotations // {}) | has("io.github.containers.zstd-chunked.manifest-checksum"))"')
     echo "${LAYER_RESULTS}"
     if echo "${LAYER_RESULTS}" | grep -q "chunked=false"; then
@@ -227,7 +229,7 @@ build app="ghostty":
       exit 1
     fi
     echo "==> All ${LAYER_COUNT} layers are zstd:chunked"
-    echo "==> Done. ghcr.io/${GH_OWNER}/${APP}:latest-${ARCH} @ ${GHCR_DIGEST}"
+    echo "==> Done. ghcr.io/${GH_REPO}/${APP}:latest-${ARCH} @ ${GHCR_DIGEST}"
 
 # Loop all apps concurrently — one just loop per app, parallel (preferred for local validation passes)
 loop-all:
@@ -363,6 +365,7 @@ loop app="ghostty":
     fi
 
     # === Common: chunkah rechunk → local registry ===
+    GH_REPO="${GITHUB_REPOSITORY:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*/[^/.]*\).*|\1|')}"
     # 1. Load OCI dir into podman image store
     IMAGE_ID=$(podman pull --quiet "oci:./${OCI_DIR}")
     echo "==> Loaded image: ${IMAGE_ID}"
@@ -410,12 +413,12 @@ loop app="ghostty":
     skopeo copy --dest-tls-verify=false \
       --digestfile "/tmp/${APP}-digest.txt" \
       "containers-storage:${CHUNKED_ID}" \
-      "docker://{{local_registry}}/castrojo/jorgehub/${APP}:latest"
+      "docker://{{local_registry}}/${GH_REPO}/${APP}:latest"
 
     # 9. Verify labels in local registry
     DIGEST=$(cat "/tmp/${APP}-digest.txt")
     skopeo inspect --tls-verify=false \
-      "docker://{{local_registry}}/castrojo/jorgehub/${APP}@${DIGEST}" \
+      "docker://{{local_registry}}/${GH_REPO}/${APP}@${DIGEST}" \
       | jq -e '
         .Labels["org.flatpak.ref"] // error("MISSING: org.flatpak.ref"),
         .Labels["org.flatpak.metadata"] // error("MISSING: org.flatpak.metadata"),
@@ -431,27 +434,30 @@ update-index app="ghostty":
     ARCH=$(uname -m)
     DIGEST=$(cat /tmp/{{app}}-ghcr-digest.txt)
     REPO_ROOT="$(git rev-parse --show-toplevel)"
-    git worktree add /tmp/jorgehub-pages gh-pages 2>/dev/null || true
-    cd /tmp/jorgehub-pages && python3 "${REPO_ROOT}/scripts/update-index.py" \
+    GH_REPO="${GITHUB_REPOSITORY:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*/[^/.]*\).*|\1|')}"
+    REPO_NAME="${GH_REPO##*/}"
+    git worktree add /tmp/${REPO_NAME}-pages gh-pages 2>/dev/null || true
+    cd /tmp/${REPO_NAME}-pages && python3 "${REPO_ROOT}/scripts/update-index.py" \
       --app {{app}} \
-      --repo "castrojo/{{app}}" \
+      --repo "${GH_REPO}/{{app}}" \
       --digest "${DIGEST}" \
       --registry ghcr.io \
       --tags "latest-${ARCH}"
-    git -C /tmp/jorgehub-pages add index/static
-    git -C /tmp/jorgehub-pages diff --cached --quiet && echo "index unchanged, skipping commit" || \
-      git -C /tmp/jorgehub-pages commit -m "feat(index): update {{app}} to ${DIGEST:0:19}"
-    git -C /tmp/jorgehub-pages push origin gh-pages
-    git worktree remove /tmp/jorgehub-pages --force
+    git -C /tmp/${REPO_NAME}-pages add index/static
+    git -C /tmp/${REPO_NAME}-pages diff --cached --quiet && echo "index unchanged, skipping commit" || \
+      git -C /tmp/${REPO_NAME}-pages commit -m "feat(index): update {{app}} to ${DIGEST:0:19}"
+    git -C /tmp/${REPO_NAME}-pages push origin gh-pages
+    git worktree remove /tmp/${REPO_NAME}-pages --force
 
 # Validate index/static JSON is well-formed (must run from gh-pages checkout)
 check-index:
     #!/usr/bin/env bash
     set -euo pipefail
     REPO_ROOT="$(git rev-parse --show-toplevel)"
-    git worktree add /tmp/jorgehub-pages gh-pages 2>/dev/null || true
-    cd /tmp/jorgehub-pages && python3 "${REPO_ROOT}/scripts/update-index.py" --validate
-    git worktree remove /tmp/jorgehub-pages --force
+    REPO_NAME="$(basename "${REPO_ROOT}")"
+    git worktree add /tmp/${REPO_NAME}-pages gh-pages 2>/dev/null || true
+    cd /tmp/${REPO_NAME}-pages && python3 "${REPO_ROOT}/scripts/update-index.py" --validate
+    git worktree remove /tmp/${REPO_NAME}-pages --force
 
 # Validate manifest lint + appstreamcli for an app (runs inside gnome-49 container)
 validate app:
@@ -480,15 +486,18 @@ check-chunkah:
     @grep -A5 -B2 'Containerfile.splitter' .github/workflows/build.yml | head -20
 
 # E2E: add remote, list apps, confirm app is visible
-verify app="ghostty":
+verify app="goose":
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "==> Adding jorgehub remote..."
-    flatpak remote-add --user --if-not-exists jorgehub \
-      oci+https://castrojo.github.io/jorgehub
-    echo "==> Listing apps from jorgehub remote..."
-    flatpak remote-ls --user jorgehub
+    GH_REPO="${GITHUB_REPOSITORY:-$(git remote get-url origin | sed 's|.*github.com[:/]\([^/]*/[^/.]*\).*|\1|')}"
+    GH_OWNER="${GH_REPO%%/*}"
+    REPO_NAME="${GH_REPO##*/}"
+    REMOTE_URL="oci+https://${GH_OWNER}.github.io/${REPO_NAME}"
+    echo "==> Adding ${REPO_NAME} remote..."
+    flatpak remote-add --user --if-not-exists "${REPO_NAME}" "${REMOTE_URL}"
+    echo "==> Listing apps from ${REPO_NAME} remote..."
+    flatpak remote-ls --user "${REPO_NAME}"
     echo "==> Looking for {{app}}..."
-    flatpak remote-ls --user jorgehub | grep -i "{{app}}" \
-      && echo "==> {{app}} found in jorgehub remote!" \
+    flatpak remote-ls --user "${REPO_NAME}" | grep -i "{{app}}" \
+      && echo "==> {{app}} found in ${REPO_NAME} remote!" \
       || { echo "ERROR: {{app}} not found"; exit 1; }
