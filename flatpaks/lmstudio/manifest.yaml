@@ -34,7 +34,7 @@ modules:
       # Fix desktop file: update Exec, Icon, and remove non-standard lowercase 'category' key
       - sed -i 's|^Exec=.*|Exec=lm-studio %U|' /app/share/applications/ai.lmstudio.LMStudio.desktop
       - sed -i 's|^Icon=.*|Icon=ai.lmstudio.LMStudio|' /app/share/applications/ai.lmstudio.LMStudio.desktop
-      - sed -i '/^category=/Id' /app/share/applications/ai.lmstudio.LMStudio.desktop
+      - sed -i '/^category=/d' /app/share/applications/ai.lmstudio.LMStudio.desktop
       # Wrapper script: Electron SUID sandbox is not usable in Flatpak; use --no-sandbox
       - install -d /app/bin
       - printf '#!/bin/sh\nexec /app/lm-studio/lm-studio --no-sandbox "$@"\n' > /app/bin/lm-studio

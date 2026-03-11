@@ -5,9 +5,7 @@ sdk: org.gnome.Sdk
 default-branch: stable
 command: ghostty
 finish-args:
-  # 3D rendering
-  - --device=dri
-  # use host PTS namespace
+  # PTY access + GPU (DRI is a subset of all; keep only --device=all)
   - --device=all
   # Windowing
   - --share=ipc
