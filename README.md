@@ -28,29 +28,28 @@ This potentially unlocks all container registries and git forges as Flatpak host
 
 ### Add this remote
 
-    flatpak remote-add --if-not-exists testhub oci+https://projectbluefin.github.io/testhub
+```
+flatpak remote-add --if-not-exists testhub oci+https://projectbluefin.github.io/testhub
+```
 
 ### Install packages
 
-| Package | App ID | Description |
-|---|---|---|
-| Ghostty | `com.mitchellh.ghostty` | GPU-accelerated terminal emulator |
-| Goose | `io.github.block.Goose` | Goose AI agent |
-| LM Studio | `ai.lmstudio.LMStudio` | Local LLM inference |
-| Firefox Nightly | `org.mozilla.firefox.nightly` | Firefox Nightly browser |
-| Thunderbird Nightly | `org.mozilla.thunderbird.nightly` | Thunderbird Nightly email client |
-| VirtualBox | `org.virtualbox.VirtualBox` | Oracle VirtualBox |
+[![Build Status](https://github.com/projectbluefin/testhub/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/projectbluefin/testhub/actions/workflows/build.yml?query=branch%3Amain)
 
-    flatpak install testhub com.mitchellh.ghostty
-    flatpak install testhub io.github.block.Goose
-    flatpak install testhub ai.lmstudio.LMStudio
-    flatpak install testhub org.mozilla.firefox.nightly
-    flatpak install testhub org.mozilla.thunderbird.nightly
-    flatpak install testhub org.virtualbox.VirtualBox
+| Package | Description | Install |
+|---|---|---|
+| Ghostty | GPU-accelerated terminal emulator | `flatpak install testhub com.mitchellh.ghostty` |
+| Goose | Goose AI agent | `flatpak install testhub io.github.block.Goose` |
+| LM Studio | Local LLM inference | `flatpak install testhub ai.lmstudio.LMStudio` |
+| Firefox Nightly | Firefox Nightly browser | `flatpak install testhub org.mozilla.firefox.nightly` |
+| Thunderbird Nightly | Thunderbird Nightly email client | `flatpak install testhub org.mozilla.thunderbird.nightly` |
+| VirtualBox | Oracle VirtualBox | `flatpak install testhub org.virtualbox.VirtualBox` |
 
 ### Update all
 
-    flatpak update
+```
+flatpak update
+```
 
 ### Checking the Signature
 
