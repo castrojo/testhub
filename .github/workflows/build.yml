@@ -381,9 +381,12 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6 # v9
-        with:
-          extra-squeeze: "true"
+      # Disabled: sign-and-push only downloads artifacts + runs podman/buildah/push.
+      # That workload fits in the default ~29 GB free on ubuntu-24.04 without cleanup.
+      # Re-enable if disk pressure is observed in this job.
+      # - uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6 # v9
+      #   with:
+      #     extra-squeeze: "true"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -763,6 +766,13 @@ jobs:
             [[ -n "${DESC}" && "${DESC}" != "null" ]] && echo "description=${DESC}" >> "$GITHUB_OUTPUT" || true
           fi
 
+      - name: Install oras
+        run: |
+          ORAS_VERSION="1.3.1"
+          curl -sSLf "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin oras
+          oras version
+
       - name: Build and push OCI image indexes
         run: |
           APP="${{ matrix.app }}"
@@ -770,7 +780,7 @@ jobs:
           REPO="${{ github.repository }}"
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            podman login ghcr.io -u "${OWNER}" --password-stdin
+            oras login ghcr.io -u "${OWNER}" --password-stdin
 
           # Collect per-arch digests that were actually built and pushed.
           declare -A ARCH_DIGESTS
@@ -787,21 +797,7 @@ jobs:
             exit 1
           fi
 
-          # Build manifest list for :latest
-          podman manifest rm "localhost/${APP}:latest" 2>/dev/null || true
-          podman manifest create "localhost/${APP}:latest"
-          for ARCH in "${!ARCH_DIGESTS[@]}"; do
-            case "${ARCH}" in
-              x86_64)  OCI_ARCH="amd64" ;;
-              aarch64) OCI_ARCH="arm64" ;;
-            esac
-            podman manifest add \
-              --arch "${OCI_ARCH}" --os linux \
-              "localhost/${APP}:latest" \
-              "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
-            echo "==> Added ${ARCH} (${OCI_ARCH}) @ ${ARCH_DIGESTS[${ARCH}]}"
-          done
-          # Annotate index with OCI standard metadata (GitHub UI reads these)
+          # Build OCI annotation flags (index-level; GitHub UI reads these).
           CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           INDEX_ANNOTATIONS=(
             --annotation "org.opencontainers.image.created=${CREATED}"
@@ -819,31 +815,31 @@ jobs:
             INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.licenses=${{ steps.version.outputs.license }}")
           [[ -n "${{ steps.version.outputs.source }}" ]] && \
             INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.source=${{ steps.version.outputs.source }}")
-          podman manifest annotate --index "${INDEX_ANNOTATIONS[@]}" "localhost/${APP}:latest"
-          podman manifest push --format oci \
-            "localhost/${APP}:latest" \
-            "docker://ghcr.io/${REPO}/${APP}:latest"
+
+          # Collect source digests for oras.
+          # oras manifest index create resolves digests relative to the same
+          # repository as the target, so pass bare sha256:... references.
+          DIGEST_ARGS=()
+          for ARCH in "${!ARCH_DIGESTS[@]}"; do
+            DIGEST_ARGS+=("${ARCH_DIGESTS[${ARCH}]}")
+          done
+
+          # Create and push OCI image index :latest with index-level annotations.
+          # oras manifest index create supports --annotation natively (unlike
+          # podman manifest annotate --index which requires podman 5+).
+          oras manifest index create \
+            "${INDEX_ANNOTATIONS[@]}" \
+            "ghcr.io/${REPO}/${APP}:latest" \
+            "${DIGEST_ARGS[@]}"
           echo "==> Pushed ghcr.io/${REPO}/${APP}:latest (${#ARCH_DIGESTS[@]} platform(s))"
 
-          # Build manifest list for version tag (bundle-repack apps only)
+          # Push version tag for bundle-repack apps.
           VERSION="${{ steps.version.outputs.version }}"
           if [[ -n "${VERSION}" ]]; then
-            podman manifest rm "localhost/${APP}:${VERSION}" 2>/dev/null || true
-            podman manifest create "localhost/${APP}:${VERSION}"
-            for ARCH in "${!ARCH_DIGESTS[@]}"; do
-              case "${ARCH}" in
-                x86_64)  OCI_ARCH="amd64" ;;
-                aarch64) OCI_ARCH="arm64" ;;
-              esac
-              podman manifest add \
-                --arch "${OCI_ARCH}" --os linux \
-                "localhost/${APP}:${VERSION}" \
-                "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
-            done
-            podman manifest annotate --index "${INDEX_ANNOTATIONS[@]}" "localhost/${APP}:${VERSION}"
-            podman manifest push --format oci \
-              "localhost/${APP}:${VERSION}" \
-              "docker://ghcr.io/${REPO}/${APP}:${VERSION}"
+            oras manifest index create \
+              "${INDEX_ANNOTATIONS[@]}" \
+              "ghcr.io/${REPO}/${APP}:${VERSION}" \
+              "${DIGEST_ARGS[@]}"
             echo "==> Pushed ghcr.io/${REPO}/${APP}:${VERSION} (${#ARCH_DIGESTS[@]} platform(s))"
           fi
 
