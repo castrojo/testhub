@@ -1,0 +1,436 @@
+#!/usr/bin/env python3
+"""
+Sync runtime-update issues from ublue-os/flatpak-tracker into testhub.
+
+Usage:
+  python3 scripts/sync-runtime-issues.py [--dry-run]
+
+Reads:
+  GITHUB_TOKEN env var (optional for local dry-run; required in CI to avoid rate limiting)
+
+Writes:
+  flatpaks/<app-id>/manifest.yaml  for each open runtime-update issue
+  (sets x-disabled: true in manifest.yaml when upstream issue closes)
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+import requests
+import yaml
+
+PROTECTED_DIRS = {
+    "ghostty",
+    "goose",
+    "lmstudio",
+    "firefox-nightly",
+    "thunderbird-nightly",
+    "virtualbox",
+}
+FLATPAK_TRACKER_REPO = "ublue-os/flatpak-tracker"
+FLATPAKS_DIR = Path("flatpaks")
+
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+HEADERS = {"Authorization": f"Bearer {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+
+
+def get_tracker_issues(state: str) -> list[dict]:
+    """Fetch flatpak-tracker issues labeled bluefin or bluefin-curated."""
+    seen: dict[int, dict] = {}
+    for label in ("bluefin", "bluefin-curated"):
+        page = 1
+        while True:
+            url = (
+                f"https://api.github.com/repos/{FLATPAK_TRACKER_REPO}/issues"
+                f"?labels={label}&state={state}&per_page=100&page={page}"
+            )
+            resp = requests.get(url, headers=HEADERS, timeout=30)
+            if resp.status_code == 404:
+                print(f"WARNING: flatpak-tracker repo not found or no access: {url}")
+                break
+            resp.raise_for_status()
+            batch = resp.json()
+            if not batch:
+                break
+            for issue in batch:
+                issue_num = issue["number"]
+                if issue_num not in seen:
+                    seen[issue_num] = issue
+            if len(batch) < 100:
+                break
+            page += 1
+    return list(seen.values())
+
+
+def parse_issue_body(body: str) -> dict | None:
+    """Extract app_id, current_runtime, and target_version from issue body.
+
+    Returns None if required fields are not found.
+    """
+    if not body:
+        return None
+
+    # **Package:** line → app_id
+    pkg_match = re.search(r"\*\*Package:\*\*\s*(.+)", body)
+    if not pkg_match:
+        return None
+    raw_pkg = pkg_match.group(1).strip().strip("`")
+    # Strip leading app/ prefix (e.g. app/com.foo.Bar → com.foo.Bar)
+    app_id = re.sub(r"^app/", "", raw_pkg)
+
+    # **Current Runtime:** line → e.g. org.gnome.Platform//48
+    current_match = re.search(r"\*\*Current Runtime:\*\*\s*(.+)", body)
+    current_runtime = (
+        current_match.group(1).strip().strip("`") if current_match else None
+    )
+
+    # **Latest Available Runtime:** line → e.g. org.gnome.Platform/x86_64/49
+    # or org.gnome.Platform//49 (spec says //, real data uses /)
+    latest_match = re.search(r"\*\*Latest Available Runtime:\*\*\s*(.+)", body)
+    if not latest_match:
+        return None
+    latest_runtime = latest_match.group(1).strip().strip("`")
+
+    # Extract version number — last segment after / or //
+    version_match = re.search(r"[/]{1,2}([^/`\s]+)\s*$", latest_runtime)
+    if not version_match:
+        return None
+    target_version = version_match.group(1).strip()
+
+    return {
+        "app_id": app_id,
+        "current_runtime": current_runtime,
+        "target_version": target_version,
+    }
+
+
+def is_protected(app_id: str) -> bool:
+    """Return True if app_id matches a protected app (skip it)."""
+    # Check directory name (last segment of app_id)
+    dir_name = app_id.lower().split(".")[-1]
+    if dir_name in PROTECTED_DIRS:
+        return True
+    # Check exact match against directory names
+    for d in PROTECTED_DIRS:
+        if d == app_id.lower():
+            return True
+    # Check existing manifests: read app-id field from each protected app's manifest.yaml
+    for pdir in PROTECTED_DIRS:
+        manifest_path = FLATPAKS_DIR / pdir / "manifest.yaml"
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as f:
+                    data = yaml.safe_load(f)
+                if data and data.get("app-id", "").lower() == app_id.lower():
+                    return True
+            except Exception:
+                pass
+    return False
+
+
+def is_already_up_to_date(app_id: str, target_version: str) -> bool:
+    """Return True if flatpaks/<app_id>/manifest.yaml already has the target runtime-version."""
+    manifest_path = FLATPAKS_DIR / app_id / "manifest.yaml"
+    if not manifest_path.exists():
+        return False
+    try:
+        with open(manifest_path) as f:
+            data = yaml.safe_load(f)
+        if data and str(data.get("runtime-version", "")) == str(target_version):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def find_runtime_bump_pr(app_id: str) -> dict | None:
+    """Fetch open Flathub PRs for app_id; return manifest data from PR branch if found."""
+    url = f"https://api.github.com/repos/flathub/{app_id}/pulls?state=open&per_page=50"
+    resp = requests.get(url, headers=HEADERS, timeout=30)
+    if resp.status_code == 404:
+        return None
+    if not resp.ok:
+        return None
+    prs = resp.json()
+    for pr in prs:
+        title = pr.get("title", "")
+        if "runtime" not in title.lower():
+            continue
+        head = pr.get("head", {})
+        head_repo = head.get("repo") or {}
+        full_name = head_repo.get("full_name", "")
+        ref = head.get("ref", "")
+        if not full_name or not ref:
+            continue
+        manifest_url = (
+            f"https://raw.githubusercontent.com/{full_name}/{ref}/{app_id}.json"
+        )
+        mresp = requests.get(manifest_url, timeout=30)
+        if mresp.status_code == 200:
+            try:
+                data = mresp.json()
+                return data
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
+def fetch_flathub_manifest(app_id: str) -> dict | None:
+    """Fetch the Flathub manifest from the default branch (master, then main)."""
+    for branch in ("master", "main"):
+        url = (
+            f"https://raw.githubusercontent.com/flathub/{app_id}/{branch}/{app_id}.json"
+        )
+        resp = requests.get(url, timeout=30)
+        if resp.status_code == 200:
+            try:
+                return resp.json()
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def flathub_repo_exists(app_id: str) -> bool:
+    """Return True if the Flathub repo exists."""
+    url = f"https://api.github.com/repos/flathub/{app_id}"
+    resp = requests.get(url, headers=HEADERS, timeout=30)
+    return resp.status_code == 200
+
+
+def build_manifest_content(data: dict, issue_number: int) -> str:
+    """Convert JSON manifest dict to YAML string with injected fields and header comment."""
+    # Inject x-version and x-arches into the data dict
+    data["x-version"] = ""
+    data["x-arches"] = ["x86_64"]
+
+    header = f"# Auto-imported from flatpak-tracker issue #{issue_number} — do not edit manually\n"
+    content = header + yaml.dump(
+        data, sort_keys=False, allow_unicode=True, default_flow_style=False
+    )
+    return content
+
+
+def write_manifest(app_id: str, content: str, dry_run: bool) -> bool:
+    """Write manifest.yaml for app_id. Returns True if a write occurred."""
+    target_dir = FLATPAKS_DIR / app_id
+    target_path = target_dir / "manifest.yaml"
+
+    # Check if content has changed
+    if target_path.exists():
+        existing = target_path.read_text()
+        if existing == content:
+            return False
+
+    if dry_run:
+        print(f"DRY-RUN WRITE: {target_path}")
+        return True
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(content)
+    return True
+
+
+def retire_app(app_id: str, dry_run: bool) -> bool:
+    """Add x-disabled: true to flatpaks/<app_id>/manifest.yaml. Returns True if written."""
+    manifest_path = FLATPAKS_DIR / app_id / "manifest.yaml"
+    if not manifest_path.exists():
+        return False
+    try:
+        with open(manifest_path) as f:
+            raw = f.read()
+        data = yaml.safe_load(raw)
+    except Exception as e:
+        print(f"WARNING: could not read {manifest_path}: {e}")
+        return False
+
+    if data is None:
+        return False
+    if data.get("x-disabled") is True:
+        return False  # already retired
+
+    data["x-disabled"] = True
+
+    # Preserve header comment if present
+    header = ""
+    if raw.startswith("#"):
+        header = raw.split("\n")[0] + "\n"
+
+    content = header + yaml.dump(
+        data, sort_keys=False, allow_unicode=True, default_flow_style=False
+    )
+
+    if dry_run:
+        print(f"DRY-RUN RETIRE: {manifest_path}")
+        return True
+
+    manifest_path.write_text(content)
+    return True
+
+
+def process_open_issues(issues: list[dict], dry_run: bool) -> dict:
+    """Process open runtime-update issues. Returns summary counts."""
+    counts = {
+        "imported": 0,
+        "skipped": 0,
+        "up_to_date": 0,
+        "no_manifest": 0,
+        "errors": 0,
+    }
+
+    for issue in issues:
+        issue_num = issue["number"]
+        issue_labels = [lbl["name"] for lbl in issue.get("labels", [])]
+
+        # Skip: dont-bother label
+        if "dont-bother" in issue_labels:
+            print(f"  SKIP #{issue_num}: has dont-bother label")
+            counts["skipped"] += 1
+            continue
+
+        parsed = parse_issue_body(issue.get("body", ""))
+        if not parsed:
+            print(f"  SKIP #{issue_num}: could not parse body")
+            counts["skipped"] += 1
+            continue
+
+        app_id = parsed["app_id"]
+        target_version = parsed["target_version"]
+
+        print(f"  Issue #{issue_num}: {app_id} → runtime-version {target_version}")
+
+        # Skip protected apps
+        if is_protected(app_id):
+            print(f"    SKIP: protected app")
+            counts["skipped"] += 1
+            continue
+
+        # Skip if already up to date
+        if is_already_up_to_date(app_id, target_version):
+            print(f"    SKIP: already at runtime-version {target_version}")
+            counts["up_to_date"] += 1
+            continue
+
+        # Check Flathub repo exists
+        if not flathub_repo_exists(app_id):
+            print(f"    SKIP: flathub/{app_id} not found (404)")
+            counts["no_manifest"] += 1
+            continue
+
+        # Approach B: try runtime-bump PR branch first
+        manifest_data = find_runtime_bump_pr(app_id)
+        source = "flathub PR branch"
+
+        if manifest_data is None:
+            # Fallback: fetch default branch and bump version
+            manifest_data = fetch_flathub_manifest(app_id)
+            source = "flathub default branch (bumped)"
+            if manifest_data is None:
+                print(f"    ERROR: could not fetch manifest from flathub/{app_id}")
+                counts["errors"] += 1
+                continue
+            # Inject target runtime-version
+            manifest_data["runtime-version"] = target_version
+
+        print(f"    SOURCE: {source}")
+
+        # Ensure app-id is preserved (Flathub uses app-id, not id)
+        if "id" in manifest_data and "app-id" not in manifest_data:
+            manifest_data["app-id"] = manifest_data.pop("id")
+
+        content = build_manifest_content(manifest_data, issue_num)
+        wrote = write_manifest(app_id, content, dry_run)
+
+        if wrote:
+            print(f"    IMPORT: {FLATPAKS_DIR / app_id / 'manifest.yaml'}")
+            counts["imported"] += 1
+        else:
+            print(f"    UNCHANGED: content identical, skipping write")
+            counts["up_to_date"] += 1
+
+    return counts
+
+
+def process_retired_issues(issues: list[dict], dry_run: bool) -> int:
+    """Process closed issues and retire matching manifests. Returns retire count."""
+    retired = 0
+    for issue in issues:
+        issue_num = issue["number"]
+        parsed = parse_issue_body(issue.get("body", ""))
+        if not parsed:
+            continue
+        app_id = parsed["app_id"]
+        if is_protected(app_id):
+            continue
+        if retire_app(app_id, dry_run):
+            print(f"RETIRE: {app_id} (issue #{issue_num} closed)")
+            retired += 1
+    return retired
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sync runtime-update issues from flatpak-tracker into testhub."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print all actions but do not write any files.",
+    )
+    args = parser.parse_args()
+
+    if args.dry_run:
+        print("=== DRY-RUN MODE: no files will be written ===\n")
+
+    if not GITHUB_TOKEN:
+        print(
+            "WARNING: GITHUB_TOKEN not set — unauthenticated requests may be rate-limited\n"
+        )
+
+    # === Open issues: import / update manifests ===
+    print("Fetching open flatpak-tracker issues (bluefin / bluefin-curated)...")
+    open_issues = get_tracker_issues("open")
+    print(f"Found {len(open_issues)} unique open issues\n")
+
+    if open_issues:
+        print("Processing open issues:")
+        counts = process_open_issues(open_issues, args.dry_run)
+    else:
+        print("No open runtime-update issues found.")
+        counts = {
+            "imported": 0,
+            "skipped": 0,
+            "up_to_date": 0,
+            "no_manifest": 0,
+            "errors": 0,
+        }
+
+    # === Closed issues: retire manifests ===
+    print("\nFetching closed flatpak-tracker issues (bluefin / bluefin-curated)...")
+    closed_issues = get_tracker_issues("closed")
+    print(f"Found {len(closed_issues)} unique closed issues\n")
+
+    if closed_issues:
+        print("Processing closed issues (retirement check):")
+        retired = process_retired_issues(closed_issues, args.dry_run)
+    else:
+        retired = 0
+
+    # === Summary ===
+    print("\n=== Summary ===")
+    print(f"  Open issues processed : {len(open_issues)}")
+    print(f"  Manifests imported    : {counts['imported']}")
+    print(f"  Already up to date    : {counts['up_to_date']}")
+    print(f"  Skipped               : {counts['skipped']}")
+    print(f"  Flathub repo missing  : {counts['no_manifest']}")
+    print(f"  Errors                : {counts['errors']}")
+    print(f"  Retired (x-disabled)  : {retired}")
+    if args.dry_run:
+        print("\n(dry-run: no files were written)")
+
+
+if __name__ == "__main__":
+    main()
