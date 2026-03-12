@@ -71,6 +71,7 @@ jobs:
             REST="${DIR#digest-}"
             ARCH="${REST##*-}"
             APP="${REST%-${ARCH}}"
+            APP="${APP,,}"
             DIGEST=$(cat "${DIGEST_FILE}")
             echo "==> Updating index: ${APP} ${ARCH} ${DIGEST}"
             python3 ../main/scripts/update-index.py \
