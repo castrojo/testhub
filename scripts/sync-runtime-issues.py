@@ -35,7 +35,10 @@ FLATPAK_TRACKER_REPO = "ublue-os/flatpak-tracker"
 FLATPAKS_DIR = Path("flatpaks")
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# Use token only for flathub/ and testhub API calls; flatpak-tracker is public
+# and a repo-scoped GITHUB_TOKEN may be rejected cross-org, returning empty results.
 HEADERS = {"Authorization": f"Bearer {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+HEADERS_PUBLIC = {}  # no auth — for cross-org public repos (ublue-os/flatpak-tracker)
 
 
 def get_tracker_issues(state: str) -> list[dict]:
@@ -47,7 +50,7 @@ def get_tracker_issues(state: str) -> list[dict]:
             f"https://api.github.com/repos/{FLATPAK_TRACKER_REPO}/issues"
             f"?labels=runtime&state={state}&per_page=100&page={page}"
         )
-        resp = requests.get(url, headers=HEADERS, timeout=30)
+        resp = requests.get(url, headers=HEADERS_PUBLIC, timeout=30)
         if resp.status_code == 404:
             print(f"WARNING: flatpak-tracker repo not found or no access: {url}")
             break
