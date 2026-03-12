@@ -67,6 +67,7 @@ jobs:
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -267,6 +268,48 @@ jobs:
           name: oci-${{ matrix.app }}-${{ matrix.arch }}
           path: ${{ matrix.app }}.oci/
           retention-days: 1
+
+      - name: File issue on build failure
+        if: failure() && steps.detect-path.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Build failure: ${{ matrix.app }} (${{ matrix.arch }})"
+          BODY="## Build failure: \`${{ matrix.app }}\` on \`${{ matrix.arch }}\`
+
+          **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Commit:** \`${{ github.sha }}\`
+          **Triggered by:** \`${{ github.event_name }}\`
+
+          The \`compile-oci\` job failed for this app/arch combination.
+          Check the run link above for the full log output.
+
+          ## Checklist for the fixing agent
+
+          - [ ] Read the full build log and identify the root cause
+          - [ ] Fix the issue (missing patch file, bad manifest field, lint exception, etc.)
+          - [ ] If the fix reveals an app-specific quirk (e.g. local patch files, finish-args oddities, appstream gaps), document it in \`skills/app-gotchas.md\` under a \`### ${{ matrix.app }}\` heading
+          - [ ] If the fix reveals a gap in the sync script or pipeline (e.g. patch files not fetched on import), update the relevant skill in \`skills/\`
+          - [ ] Add any new lint exceptions to \`flatpaks/${{ matrix.app }}/exceptions.json\`
+          - [ ] Close this issue once the fix is merged and the build passes"
+
+          # Avoid duplicate issues: check if an open issue with the same title exists
+          EXISTING=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "\"${TITLE}\"" \
+            --json number \
+            --jq '.[0].number // ""')
+          if [[ -n "${EXISTING}" ]]; then
+            echo "==> Open issue #${EXISTING} already exists for this failure — skipping"
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${TITLE}" \
+              --body "${BODY}" \
+              --label "build-failure"
+            echo "==> Filed new issue: ${TITLE}"
+          fi
 
   # ── Build gate (required check for merge queue) ───────────────────────────
   # Single stable job name that requires all build matrix entries to pass.

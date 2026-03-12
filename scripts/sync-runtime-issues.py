@@ -186,10 +186,11 @@ def find_runtime_bump_pr(app_id: str) -> dict | None:
     return None
 
 
-def fetch_flathub_manifest(app_id: str) -> dict | None:
+def fetch_flathub_manifest(app_id: str) -> tuple[dict | None, str]:
     """Fetch the Flathub manifest from the default branch (master, then main).
 
     Tries .json first, then .yml, then .yaml.
+    Returns (manifest_data, branch) or (None, "").
     """
     for branch in ("master", "main"):
         for ext in (".json", ".yml", ".yaml"):
@@ -199,12 +200,12 @@ def fetch_flathub_manifest(app_id: str) -> dict | None:
                 continue
             try:
                 if ext == ".json":
-                    return resp.json()
+                    return resp.json(), branch
                 else:
-                    return yaml.safe_load(resp.text)
+                    return yaml.safe_load(resp.text), branch
             except Exception:
                 continue
-    return None
+    return None, ""
 
 
 def flathub_repo_exists(app_id: str) -> bool:
@@ -225,6 +226,77 @@ def build_manifest_content(data: dict, issue_number: int) -> str:
         data, sort_keys=False, allow_unicode=True, default_flow_style=False
     )
     return content
+
+
+def fetch_local_patch_files(
+    app_id: str, manifest_data: dict, branch: str, dry_run: bool
+) -> list[str]:
+    """Fetch local patch files referenced in manifest modules and write them to flatpaks/<app_id>/.
+
+    Scans all modules recursively for sources of type 'patch' with a 'path' field (not a URL).
+    Returns list of fetched file paths.
+    """
+    fetched: list[str] = []
+    patch_paths: list[str] = []
+
+    # Collect all patch source paths recursively from modules
+    def collect_patches(modules):
+        if not modules:
+            return
+        for mod in modules:
+            if not isinstance(mod, dict):
+                continue
+            for src in mod.get("sources", []):
+                if not isinstance(src, dict):
+                    continue
+                if src.get("type") == "patch":
+                    path = src.get("path", "")
+                    # Only local paths (not URLs)
+                    if (
+                        path
+                        and not path.startswith("http://")
+                        and not path.startswith("https://")
+                    ):
+                        patch_paths.append(path)
+            # Recurse into submodules
+            collect_patches(mod.get("modules", []))
+
+    collect_patches(manifest_data.get("modules", []))
+
+    if not patch_paths:
+        return fetched
+
+    target_dir = FLATPAKS_DIR / app_id
+
+    for patch_path in patch_paths:
+        # patch_path is relative to the manifest — fetch from the same directory in the Flathub repo
+        patch_name = Path(patch_path).name
+        raw_url = (
+            f"https://raw.githubusercontent.com/flathub/{app_id}/{branch}/{patch_path}"
+        )
+        print(f"    PATCH: fetching {patch_path} from {raw_url}")
+
+        if dry_run:
+            print(f"    DRY-RUN PATCH WRITE: {target_dir / patch_name}")
+            fetched.append(patch_name)
+            continue
+
+        try:
+            resp = requests.get(raw_url, timeout=30)
+            if resp.status_code != 200:
+                print(
+                    f"    WARNING: could not fetch {patch_path} (HTTP {resp.status_code}) — build may fail"
+                )
+                continue
+            target_dir.mkdir(parents=True, exist_ok=True)
+            dest = target_dir / patch_name
+            dest.write_bytes(resp.content)
+            print(f"    PATCH WRITTEN: {dest}")
+            fetched.append(patch_name)
+        except Exception as e:
+            print(f"    WARNING: error fetching {patch_path}: {e}")
+
+    return fetched
 
 
 def write_manifest(app_id: str, content: str, dry_run: bool) -> bool:
@@ -344,10 +416,11 @@ def process_open_issues(issues: list[dict], dry_run: bool) -> dict:
         # Approach B: try runtime-bump PR branch first
         manifest_data = find_runtime_bump_pr(app_id)
         source = "flathub PR branch"
+        flathub_branch = "master"  # default for patch-file fetching
 
         if manifest_data is None:
             # Fallback: fetch default branch and bump version
-            manifest_data = fetch_flathub_manifest(app_id)
+            manifest_data, flathub_branch = fetch_flathub_manifest(app_id)
             source = "flathub default branch (bumped)"
             if manifest_data is None:
                 print(f"    ERROR: could not fetch manifest from flathub/{app_id}")
@@ -361,6 +434,9 @@ def process_open_issues(issues: list[dict], dry_run: bool) -> dict:
         # Ensure app-id is preserved (Flathub uses app-id, not id)
         if "id" in manifest_data and "app-id" not in manifest_data:
             manifest_data["app-id"] = manifest_data.pop("id")
+
+        # Fetch any local patch files referenced in the manifest
+        fetch_local_patch_files(app_id, manifest_data, flathub_branch, dry_run)
 
         content = build_manifest_content(manifest_data, issue_num)
         wrote = write_manifest(app_id, content, dry_run)
