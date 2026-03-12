@@ -206,18 +206,11 @@ These errors fire on every manifest.yaml app in testhub (not Flathub-specific be
 
 Add these **four** to `exceptions.json` for every manifest.yaml app.
 
-#### Per-app additional exceptions
+If CI surfaces additional errors after first run, add them to `exceptions.json` and
+document in the app's `GOTCHAS.md`. Do not add metainfo fields we cannot keep accurate
+(developer name, screenshots, VCS URLs) — suppress via exceptions instead.
 
-Some apps trigger additional errors due to missing metainfo fields. Suppress rather than
-maintain upstream metadata we don't control:
-
-| Exception | App | Reason |
-|---|---|---|
-| `appstream-missing-developer-name` | firefox-nightly, thunderbird-nightly | No `<developer>` tag in upstream metainfo |
-
-If CI surfaces new errors after first run, add them to `exceptions.json` and document here.
-Do not add metainfo fields we cannot keep accurate (developer name, screenshots, VCS URLs) —
-suppress via exceptions instead.
+Per-app additional exceptions are documented in each app's `GOTCHAS.md`.
 
 #### Running locally
 

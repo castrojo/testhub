@@ -52,3 +52,16 @@ Firefox Nightly uses `org.freedesktop.Platform//24.08` + `org.mozilla.firefox.Ba
 not the GNOME runtime used by the other apps. The build container must use
 `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08` (set via
 `x-container-image` in `manifest.yaml`).
+
+## exceptions.json — lint suppressions
+
+In addition to the standard non-Flathub exceptions, firefox-nightly suppresses:
+
+| Exception | Reason |
+|---|---|
+| `finish-args-unnecessary-xdg-config-gtk-3.0-ro-access` | Firefox reads GTK3 config; linter flags it unnecessary but it is required |
+| `finish-args-own-name-wildcard-org.mozilla.firefox` | Firefox acquires wildcard D-Bus names for multi-profile support |
+| `finish-args-own-name-wildcard-org.mozilla.firefox_beta` | Same — beta name variant also acquired |
+| `manifest-unknown-properties` | Upstream manifest uses properties not in flatpak-builder JSON schema |
+| `metainfo-missing-screenshots` | Personal hosting repo — no screenshots maintained |
+| `appstream-missing-developer-name` | No `<developer>` tag in upstream metainfo; suppress rather than maintain |

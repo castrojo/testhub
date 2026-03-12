@@ -22,3 +22,13 @@ globs will silently strip it. Verify after any new module is added.
 
 Required for GPU (Vulkan) and PTY device access. Flathub would require narrowing this to
 specific devices. Intentional for now.
+
+## exceptions.json — lint suppressions
+
+In addition to the standard non-Flathub exceptions, ghostty suppresses:
+
+| Exception | Reason |
+|---|---|
+| `finish-args-unnecessary-xdg-config-ghostty-ro-access` | Ghostty reads its own config from XDG; linter flags this as unnecessary but it is required |
+| `finish-args-flatpak-spawn-access` | Required for sandbox escape (see above) — linter flags it, intentional |
+| `metainfo-missing-screenshots` | Personal hosting repo — no screenshots maintained |
