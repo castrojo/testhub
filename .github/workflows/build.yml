@@ -736,12 +736,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read version (bundle-repack apps only)
+      - name: Read version and OCI metadata
         id: version
         run: |
           if [[ -f "flatpaks/${{ matrix.app }}/release.yaml" ]]; then
             VERSION=$(yq '.version // ""' "flatpaks/${{ matrix.app }}/release.yaml")
             [[ -n "${VERSION}" && "${VERSION}" != "null" ]] && echo "version=${VERSION}" >> "$GITHUB_OUTPUT" || true
+            TITLE=$(yq '.title // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${TITLE}" && "${TITLE}" != "null" ]] && echo "title=${TITLE}" >> "$GITHUB_OUTPUT" || true
+            DESC=$(yq '.description // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${DESC}" && "${DESC}" != "null" ]] && echo "description=${DESC}" >> "$GITHUB_OUTPUT" || true
+            LICENSE=$(yq '.license // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${LICENSE}" && "${LICENSE}" != "null" ]] && echo "license=${LICENSE}" >> "$GITHUB_OUTPUT" || true
+            URL=$(yq '.url // ""' "flatpaks/${{ matrix.app }}/release.yaml")
+            [[ -n "${URL}" && "${URL}" != "null" ]] && echo "source=${URL}" >> "$GITHUB_OUTPUT" || true
+          elif [[ -f "flatpaks/${{ matrix.app }}/manifest.yaml" ]]; then
+            VERSION=$(yq '.["x-version"] // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            [[ -n "${VERSION}" && "${VERSION}" != "null" ]] && echo "version=${VERSION}" >> "$GITHUB_OUTPUT" || true
+            TITLE=$(yq '.["x-title"] // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            [[ -n "${TITLE}" && "${TITLE}" != "null" ]] && echo "title=${TITLE}" >> "$GITHUB_OUTPUT" || true
+            DESC=$(yq '.["x-description"] // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            [[ -n "${DESC}" && "${DESC}" != "null" ]] && echo "description=${DESC}" >> "$GITHUB_OUTPUT" || true
           fi
 
       - name: Build and push OCI image indexes
@@ -782,6 +797,25 @@ jobs:
               "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
             echo "==> Added ${ARCH} (${OCI_ARCH}) @ ${ARCH_DIGESTS[${ARCH}]}"
           done
+          # Annotate index with OCI standard metadata (GitHub UI reads these)
+          CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          INDEX_ANNOTATIONS=(
+            --annotation "org.opencontainers.image.created=${CREATED}"
+            --annotation "org.opencontainers.image.revision=${{ github.sha }}"
+            --annotation "org.opencontainers.image.vendor=${{ github.repository_owner }}"
+            --annotation "org.opencontainers.image.url=https://github.com/${REPO}"
+          )
+          [[ -n "${{ steps.version.outputs.version }}" ]] && \
+            INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.version=${{ steps.version.outputs.version }}")
+          [[ -n "${{ steps.version.outputs.title }}" ]] && \
+            INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.title=${{ steps.version.outputs.title }}")
+          [[ -n "${{ steps.version.outputs.description }}" ]] && \
+            INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.description=${{ steps.version.outputs.description }}")
+          [[ -n "${{ steps.version.outputs.license }}" ]] && \
+            INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.licenses=${{ steps.version.outputs.license }}")
+          [[ -n "${{ steps.version.outputs.source }}" ]] && \
+            INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.source=${{ steps.version.outputs.source }}")
+          podman manifest annotate --index "${INDEX_ANNOTATIONS[@]}" "localhost/${APP}:latest"
           podman manifest push --format oci \
             "localhost/${APP}:latest" \
             "docker://ghcr.io/${REPO}/${APP}:latest"
@@ -802,6 +836,7 @@ jobs:
                 "localhost/${APP}:${VERSION}" \
                 "docker://ghcr.io/${REPO}/${APP}@${ARCH_DIGESTS[${ARCH}]}"
             done
+            podman manifest annotate --index "${INDEX_ANNOTATIONS[@]}" "localhost/${APP}:${VERSION}"
             podman manifest push --format oci \
               "localhost/${APP}:${VERSION}" \
               "docker://ghcr.io/${REPO}/${APP}:${VERSION}"
@@ -823,6 +858,8 @@ jobs:
           [[ "${COUNT}" -ge 1 ]] \
             && echo "==> latest index has ${COUNT} platform(s) [${MEDIA_TYPE}]" \
             || { echo "ERROR: latest is not an image index" >&2; exit 1; }
+          echo "${RAW}" | jq -e '.annotations["org.opencontainers.image.created"] // error("MISSING index annotation: created")' > /dev/null \
+            && echo "==> Index annotation org.opencontainers.image.created: OK"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
