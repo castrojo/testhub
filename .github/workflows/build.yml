@@ -405,6 +405,9 @@ jobs:
           sudo sysctl -w kernel.unprivileged_userns_clone=1
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+      - name: Set APP_LOWER env
+        run: echo "APP_LOWER=$(echo '${{ matrix.app }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Check arch support
         id: arch-check
         run: |
@@ -619,7 +622,7 @@ jobs:
             *)       echo "ERROR: unknown arch ${ARCH}" >&2; exit 1 ;;
           esac
           STAGING_TAG="sha-${{ github.sha }}-${OCI_ARCH}"
-          TARGET="ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}"
+           TARGET="ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}:${STAGING_TAG}"
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
           podman push \
@@ -648,13 +651,13 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign sign --yes \
-            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}@${{ env.DIGEST }}
 
       - name: Generate SBOM
         if: steps.arch-check.outputs.skip != 'true'
         uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
         with:
-          image: ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
+          image: ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}@${{ env.DIGEST }}
           format: spdx-json
           output-file: sbom-${{ matrix.app }}.spdx.json
           artifact-name: sbom-${{ matrix.app }}-${{ matrix.arch }}
@@ -665,7 +668,7 @@ jobs:
           cosign attest --yes \
             --predicate sbom-${{ matrix.app }}.spdx.json \
             --type spdxjson \
-            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}@${{ env.DIGEST }}
 
       - name: Verify cosign signature
         if: steps.arch-check.outputs.skip != 'true'
@@ -673,7 +676,7 @@ jobs:
           cosign verify \
             --certificate-identity-regexp='^https://github\.com/${{ github.repository }}/\.github/workflows/build\.yml@refs/heads/' \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
+            ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}@${{ env.DIGEST }}
 
       - name: Verify SBOM attestation
         if: steps.arch-check.outputs.skip != 'true'
@@ -683,7 +686,7 @@ jobs:
             --type spdxjson \
             --certificate-identity-regexp='^https://github\.com/${{ github.repository }}/\.github/workflows/build\.yml@refs/heads/' \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }} \
+            ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}@${{ env.DIGEST }} \
             | jq '.payload | @base64d | fromjson | .predicateType'
 
       - name: Login to ghcr.io for skopeo inspect
@@ -698,7 +701,7 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           skopeo inspect \
-            "docker://ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}:${STAGING_TAG}" \
             | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
@@ -714,7 +717,7 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           RESULTS=$(skopeo inspect --raw \
-            "docker://ghcr.io/${{ github.repository }}/${{ matrix.app }}:${STAGING_TAG}" \
+            "docker://ghcr.io/${{ github.repository }}/${{ env.APP_LOWER }}:${STAGING_TAG}" \
             | jq -r '.layers[] | "Layer \(.digest[:19]): chunked=\((.annotations // {}) | has("io.github.containers.zstd-chunked.manifest-checksum"))"')
           echo "${RESULTS}"
           echo "${RESULTS}" | grep -q "chunked=false" \
