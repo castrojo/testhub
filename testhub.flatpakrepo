@@ -1,0 +1,7 @@
+[Flatpak Repo]
+Title=testhub
+Comment=Personal OCI Flatpak remote for projectbluefin/testhub
+Description=Flatpak apps hosted as OCI images on ghcr.io
+Url=https://projectbluefin.github.io/testhub
+Homepage=https://github.com/projectbluefin/testhub
+Icon=https://raw.githubusercontent.com/projectbluefin/testhub/main/icon.svg
