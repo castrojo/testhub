@@ -1064,7 +1064,8 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           mkdir -p /var/lib/dbus && dbus-uuidgen | tee /var/lib/dbus/machine-id
-          mkdir -p /run/dbus
+          # gnome-49 container dbus config uses /app prefix for the socket path
+          mkdir -p /app/var/run/dbus
           dbus-daemon --system --fork
 
       - name: Install ${{ matrix.app }}
