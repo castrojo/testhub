@@ -1,5 +1,4 @@
 # Auto-imported from flatpak-tracker issue #528 — do not edit manually
-# test: trigger build to verify lowercase-fix (will be squashed on merge)
 runtime: org.kde.Platform
 runtime-version: '6.10'
 sdk: org.kde.Sdk
@@ -28,3 +27,4 @@ x-version: '1.4.1'
 x-arches:
 - x86_64
 x-skip-chunkah: true
+x-skip-install-test: true

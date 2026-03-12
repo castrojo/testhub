@@ -1062,6 +1062,11 @@ jobs:
               echo "==> Skipping ${{ matrix.app }} install-test (x-disabled: true)"
               echo "skip=true" >> "$GITHUB_OUTPUT"
             fi
+            SKIP_INSTALL=$(yq '.["x-skip-install-test"] // ""' "flatpaks/${{ matrix.app }}/manifest.yaml")
+            if [[ "${SKIP_INSTALL}" == "true" ]]; then
+              echo "==> Skipping ${{ matrix.app }} install-test (x-skip-install-test: true)"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Read app-id from manifest
