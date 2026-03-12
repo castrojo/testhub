@@ -396,7 +396,9 @@ jobs:
           echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
 
       - name: Enable user namespaces for rootless podman
-        run: sudo sysctl -w kernel.unprivileged_userns_clone=1
+        run: |
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Check arch support
         id: arch-check
