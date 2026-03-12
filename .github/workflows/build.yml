@@ -394,6 +394,10 @@ jobs:
         run: |
           /home/linuxbrew/.linuxbrew/bin/brew install podman
           echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+          # Point podman to Homebrew's crun (system /usr/bin/crun is too old on ubuntu-24.04).
+          mkdir -p ~/.config/containers
+          printf '[engine]\nruntime = "/home/linuxbrew/.linuxbrew/bin/crun"\n' \
+            > ~/.config/containers/containers.conf
 
       - name: Enable user namespaces for rootless podman
         run: |
@@ -1056,10 +1060,11 @@ jobs:
           flatpak remote-add --system --if-not-exists testhub \
             oci+https://projectbluefin.github.io/testhub
 
-      - name: Ensure machine-id exists
+      - name: Ensure machine-id and system D-Bus exist
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           mkdir -p /var/lib/dbus && dbus-uuidgen | tee /var/lib/dbus/machine-id
+          dbus-daemon --system --fork
 
       - name: Install ${{ matrix.app }}
         if: steps.arch-check.outputs.skip != 'true'
