@@ -39,30 +39,29 @@ HEADERS = {"Authorization": f"Bearer {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 
 
 def get_tracker_issues(state: str) -> list[dict]:
-    """Fetch flatpak-tracker issues labeled bluefin or bluefin-curated."""
+    """Fetch flatpak-tracker issues labeled runtime."""
     seen: dict[int, dict] = {}
-    for label in ("bluefin", "bluefin-curated"):
-        page = 1
-        while True:
-            url = (
-                f"https://api.github.com/repos/{FLATPAK_TRACKER_REPO}/issues"
-                f"?labels={label}&state={state}&per_page=100&page={page}"
-            )
-            resp = requests.get(url, headers=HEADERS, timeout=30)
-            if resp.status_code == 404:
-                print(f"WARNING: flatpak-tracker repo not found or no access: {url}")
-                break
-            resp.raise_for_status()
-            batch = resp.json()
-            if not batch:
-                break
-            for issue in batch:
-                issue_num = issue["number"]
-                if issue_num not in seen:
-                    seen[issue_num] = issue
-            if len(batch) < 100:
-                break
-            page += 1
+    page = 1
+    while True:
+        url = (
+            f"https://api.github.com/repos/{FLATPAK_TRACKER_REPO}/issues"
+            f"?labels=runtime&state={state}&per_page=100&page={page}"
+        )
+        resp = requests.get(url, headers=HEADERS, timeout=30)
+        if resp.status_code == 404:
+            print(f"WARNING: flatpak-tracker repo not found or no access: {url}")
+            break
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        for issue in batch:
+            issue_num = issue["number"]
+            if issue_num not in seen:
+                seen[issue_num] = issue
+        if len(batch) < 100:
+            break
+        page += 1
     return list(seen.values())
 
 
@@ -166,31 +165,40 @@ def find_runtime_bump_pr(app_id: str) -> dict | None:
         ref = head.get("ref", "")
         if not full_name or not ref:
             continue
-        manifest_url = (
-            f"https://raw.githubusercontent.com/{full_name}/{ref}/{app_id}.json"
-        )
-        mresp = requests.get(manifest_url, timeout=30)
-        if mresp.status_code == 200:
+        for ext, is_json in ((".json", True), (".yml", False), (".yaml", False)):
+            manifest_url = (
+                f"https://raw.githubusercontent.com/{full_name}/{ref}/{app_id}{ext}"
+            )
+            mresp = requests.get(manifest_url, timeout=30)
+            if mresp.status_code != 200:
+                continue
             try:
-                data = mresp.json()
-                return data
-            except json.JSONDecodeError:
+                data = mresp.json() if is_json else yaml.safe_load(mresp.text)
+                if data:
+                    return data
+            except Exception:
                 continue
     return None
 
 
 def fetch_flathub_manifest(app_id: str) -> dict | None:
-    """Fetch the Flathub manifest from the default branch (master, then main)."""
+    """Fetch the Flathub manifest from the default branch (master, then main).
+
+    Tries .json first, then .yml, then .yaml.
+    """
     for branch in ("master", "main"):
-        url = (
-            f"https://raw.githubusercontent.com/flathub/{app_id}/{branch}/{app_id}.json"
-        )
-        resp = requests.get(url, timeout=30)
-        if resp.status_code == 200:
+        for ext in (".json", ".yml", ".yaml"):
+            url = f"https://raw.githubusercontent.com/flathub/{app_id}/{branch}/{app_id}{ext}"
+            resp = requests.get(url, timeout=30)
+            if resp.status_code != 200:
+                continue
             try:
-                return resp.json()
-            except json.JSONDecodeError:
-                return None
+                if ext == ".json":
+                    return resp.json()
+                else:
+                    return yaml.safe_load(resp.text)
+            except Exception:
+                continue
     return None
 
 
@@ -391,7 +399,7 @@ def main():
         )
 
     # === Open issues: import / update manifests ===
-    print("Fetching open flatpak-tracker issues (bluefin / bluefin-curated)...")
+    print("Fetching open flatpak-tracker issues (runtime label)...")
     open_issues = get_tracker_issues("open")
     print(f"Found {len(open_issues)} unique open issues\n")
 
@@ -409,7 +417,7 @@ def main():
         }
 
     # === Closed issues: retire manifests ===
-    print("\nFetching closed flatpak-tracker issues (bluefin / bluefin-curated)...")
+    print("\nFetching closed flatpak-tracker issues (runtime label)...")
     closed_issues = get_tracker_issues("closed")
     print(f"Found {len(closed_issues)} unique closed issues\n")
 
