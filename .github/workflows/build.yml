@@ -561,7 +561,7 @@ jobs:
         if: steps.arch-check.outputs.skip != 'true'
         run: |
           cosign verify \
-            --certificate-identity=${{ github.server_url }}/${{ github.repository }}/.github/workflows/build.yml@${{ github.ref }} \
+            --certificate-identity-regexp='^https://github\.com/${{ github.repository }}/\.github/workflows/build\.yml@refs/heads/' \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
             ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }}
 
@@ -571,7 +571,7 @@ jobs:
           set -o pipefail
           cosign verify-attestation \
             --type spdxjson \
-            --certificate-identity=${{ github.server_url }}/${{ github.repository }}/.github/workflows/build.yml@${{ github.ref }} \
+            --certificate-identity-regexp='^https://github\.com/${{ github.repository }}/\.github/workflows/build\.yml@refs/heads/' \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
             ghcr.io/${{ github.repository }}/${{ matrix.app }}@${{ env.DIGEST }} \
             | jq '.payload | @base64d | fromjson | .predicateType'

@@ -239,3 +239,21 @@ Tools available in gnome-49 and ubuntu-24.04 runners: `yq`, `jq`, `python3`, `cu
 - File download + verify → `curl` + `sha256sum`
 
 Before adding any new tool, dependency, or abstraction layer: stop and ask. Default: don't add it.
+
+## cosign verify and merge queue
+
+`cosign verify --certificate-identity=<url>@${{ github.ref }}` fails in the merge queue
+because `github.ref` is `refs/heads/gh-readonly-queue/main/pr-N-...`, not `refs/heads/main`.
+The signing cert records the actual runtime ref, so the expected identity doesn't match.
+
+**Fix:** Use `--certificate-identity-regexp` with a prefix match:
+
+```yaml
+cosign verify \
+  --certificate-identity-regexp='^https://github\.com/<org>/<repo>/\.github/workflows/build\.yml@refs/heads/' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+  ...
+```
+
+Apply the same regexp to `cosign verify-attestation`. Never use `--certificate-identity`
+with a literal `@${{ github.ref }}` in any workflow that runs on `merge_group` events.
