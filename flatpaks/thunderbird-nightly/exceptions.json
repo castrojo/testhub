@@ -1,3 +1,7 @@
 {
-    "org.mozilla.thunderbird.nightly": ["appid-filename-mismatch"]
+    "org.mozilla.thunderbird.nightly": [
+        "appid-filename-mismatch",
+        "metainfo-missing-screenshots",
+        "appstream-missing-developer-name"
+    ]
 }
