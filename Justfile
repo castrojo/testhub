@@ -622,7 +622,7 @@ push-manifest-list app registry="ghcr.io":
 
     # Login
     if [[ "${REGISTRY}" == "ghcr.io" ]]; then
-        gh auth token | oras login ghcr.io --username "${GH_OWNER}" --password-stdin
+        gh auth token | podman login ghcr.io --username "${GH_OWNER}" --password-stdin
     fi
 
     # Collect per-arch digests
@@ -639,39 +639,74 @@ push-manifest-list app registry="ghcr.io":
         exit 1
     fi
 
-    # Build index-level annotations
-    CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    INDEX_ANNOTATIONS=(
-        --annotation "org.opencontainers.image.created=${CREATED}"
-        --annotation "org.opencontainers.image.vendor=${GH_OWNER}"
-        --annotation "org.opencontainers.image.url=https://github.com/${GH_REPO}"
-    )
-    [[ -n "${VERSION}" ]] && INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.version=${VERSION}")
-    [[ -n "${TITLE}" ]]   && INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.title=${TITLE}")
-    [[ -n "${DESC}" ]]    && INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.description=${DESC}")
-    [[ -n "${LICENSE}" ]] && INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.licenses=${LICENSE}")
-    [[ -n "${URL}" ]]     && INDEX_ANNOTATIONS+=(--annotation "org.opencontainers.image.source=${URL}")
-
-    # Build digest args (bare sha256:... refs — oras resolves relative to the same repo)
-    DIGEST_ARGS=()
+    # Look up org.flatpak.ref label from each per-arch image — required for Flatpak install.
+    # Flatpak mirrors the OCI index locally and resolves refs via org.opencontainers.image.ref.name
+    # on each descriptor. Without this annotation every flatpak install fails with
+    # "Ref 'app/...' not found in registry".
+    declare -A ARCH_REFS=()
     for ARCH in "${!ARCH_DIGESTS[@]}"; do
-        DIGEST_ARGS+=("${ARCH_DIGESTS[${ARCH}]}")
+        DIGEST="${ARCH_DIGESTS[${ARCH}]}"
+        FLATPAK_REF=$(skopeo inspect \
+            "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}@${DIGEST}" \
+            2>/dev/null | jq -r '.Labels["org.flatpak.ref"] // empty')
+        if [[ -n "${FLATPAK_REF}" ]]; then
+            ARCH_REFS[${ARCH}]="${FLATPAK_REF}"
+            echo "==> ${ARCH}: org.flatpak.ref=${FLATPAK_REF}"
+        else
+            echo "WARNING: no org.flatpak.ref label on ${DIGEST} (arch=${ARCH})" >&2
+        fi
     done
 
+    # Build index-level annotations
+    CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    _push_manifest_list() {
+        local TAG="$1"
+        local LIST="${REGISTRY}/${GH_REPO}/${APP_LOWER}:${TAG}"
+
+        # Create a fresh manifest list (remove any stale local state first)
+        podman manifest rm "${LIST}" 2>/dev/null || true
+        podman manifest create "${LIST}"
+
+        # Add each per-arch digest and annotate with org.opencontainers.image.ref.name
+        for ARCH in "${!ARCH_DIGESTS[@]}"; do
+            DIGEST="${ARCH_DIGESTS[${ARCH}]}"
+            podman manifest add "${LIST}" \
+                "${REGISTRY}/${GH_REPO}/${APP_LOWER}@${DIGEST}"
+            if [[ -n "${ARCH_REFS[${ARCH}]+set}" ]]; then
+                podman manifest annotate \
+                    --annotation "org.opencontainers.image.ref.name=${ARCH_REFS[${ARCH}]}" \
+                    "${LIST}" "${DIGEST}"
+            fi
+        done
+
+        # Set index-level annotations
+        podman manifest annotate --index \
+            --annotation "org.opencontainers.image.created=${CREATED}" \
+            --annotation "org.opencontainers.image.vendor=${GH_OWNER}" \
+            --annotation "org.opencontainers.image.url=https://github.com/${GH_REPO}" \
+            "${LIST}"
+        [[ -n "${VERSION}" ]] && podman manifest annotate --index \
+            --annotation "org.opencontainers.image.version=${VERSION}" "${LIST}"
+        [[ -n "${TITLE}" ]]   && podman manifest annotate --index \
+            --annotation "org.opencontainers.image.title=${TITLE}" "${LIST}"
+        [[ -n "${DESC}" ]]    && podman manifest annotate --index \
+            --annotation "org.opencontainers.image.description=${DESC}" "${LIST}"
+        [[ -n "${LICENSE}" ]] && podman manifest annotate --index \
+            --annotation "org.opencontainers.image.licenses=${LICENSE}" "${LIST}"
+        [[ -n "${URL}" ]]     && podman manifest annotate --index \
+            --annotation "org.opencontainers.image.source=${URL}" "${LIST}"
+
+        podman manifest push --all "${LIST}" "docker://${LIST}"
+        echo "==> Pushed ${LIST} (${#ARCH_DIGESTS[@]} platform(s))"
+    }
+
     # Push :latest index
-    oras manifest index create \
-        "${INDEX_ANNOTATIONS[@]}" \
-        "${REGISTRY}/${GH_REPO}/${APP_LOWER}:latest" \
-        "${DIGEST_ARGS[@]}"
-    echo "==> Pushed ${REGISTRY}/${GH_REPO}/${APP_LOWER}:latest (${#ARCH_DIGESTS[@]} platform(s))"
+    _push_manifest_list "latest"
 
     # Push :version index
     if [[ -n "${VERSION}" ]]; then
-        oras manifest index create \
-            "${INDEX_ANNOTATIONS[@]}" \
-            "${REGISTRY}/${GH_REPO}/${APP_LOWER}:${VERSION}" \
-            "${DIGEST_ARGS[@]}"
-        echo "==> Pushed ${REGISTRY}/${GH_REPO}/${APP_LOWER}:${VERSION} (${#ARCH_DIGESTS[@]} platform(s))"
+        _push_manifest_list "${VERSION}"
     fi
 
 # Run E2E install test locally (reproduces CI e2e-install job).

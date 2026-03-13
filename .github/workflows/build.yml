@@ -7,7 +7,7 @@
 #
 # sign-and-push, publish-manifest-list, annotate-packages run on BARE ubuntu-24.04:
 #   Has: podman+buildah (via Homebrew/install-tools-podman), cosign (via action),
-#        oras (via download/install-tools-oras), skopeo, gh, just
+#        podman (via brew/install-tools-podman), skopeo, gh, just
 #
 # Justfile is the single source of truth for all inline shell logic.
 # CI-only concerns kept in YAML: staging tags, layer cache (actions/cache),
@@ -659,8 +659,8 @@ jobs:
           [[ "${VERSION}" == "null" ]] && VERSION=""
           [[ -n "${VERSION}" ]] && echo "version=${VERSION}" >> "$GITHUB_OUTPUT" || true
 
-      - name: Install oras
-        run: just install-tools-oras
+      - name: Install podman
+        run: just install-tools-podman
 
       - name: Build and push OCI image indexes
         run: just push-manifest-list '${{ matrix.app }}'
