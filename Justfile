@@ -657,9 +657,7 @@ push-manifest-list app registry="ghcr.io":
         fi
     done
 
-    # Build index-level annotations
-    CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
+    # Build manifest list and push (function used for both :latest and :version tags)
     _push_manifest_list() {
         local TAG="$1"
         local LIST="${REGISTRY}/${GH_REPO}/${APP_LOWER}:${TAG}"
@@ -679,23 +677,6 @@ push-manifest-list app registry="ghcr.io":
                     "${LIST}" "${DIGEST}"
             fi
         done
-
-        # Set index-level annotations
-        podman manifest annotate --index \
-            --annotation "org.opencontainers.image.created=${CREATED}" \
-            --annotation "org.opencontainers.image.vendor=${GH_OWNER}" \
-            --annotation "org.opencontainers.image.url=https://github.com/${GH_REPO}" \
-            "${LIST}"
-        [[ -n "${VERSION}" ]] && podman manifest annotate --index \
-            --annotation "org.opencontainers.image.version=${VERSION}" "${LIST}"
-        [[ -n "${TITLE}" ]]   && podman manifest annotate --index \
-            --annotation "org.opencontainers.image.title=${TITLE}" "${LIST}"
-        [[ -n "${DESC}" ]]    && podman manifest annotate --index \
-            --annotation "org.opencontainers.image.description=${DESC}" "${LIST}"
-        [[ -n "${LICENSE}" ]] && podman manifest annotate --index \
-            --annotation "org.opencontainers.image.licenses=${LICENSE}" "${LIST}"
-        [[ -n "${URL}" ]]     && podman manifest annotate --index \
-            --annotation "org.opencontainers.image.source=${URL}" "${LIST}"
 
         podman manifest push --all "${LIST}" "docker://${LIST}"
         echo "==> Pushed ${LIST} (${#ARCH_DIGESTS[@]} platform(s))"
