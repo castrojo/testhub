@@ -506,6 +506,24 @@ jobs:
           echo "${STAGING_TAG}" > /tmp/staging-tag.txt
           echo "==> Pushed staging tag ${TARGET} @ ${DIGEST} — layers: ${LAYER_COUNT}"
 
+      - name: Patch manifest mediaType for flatpak compatibility
+        if: steps.arch-check.outputs.skip != 'true'
+        run: |
+          # flatpak >= 1.16 requires top-level "mediaType" in the OCI manifest JSON blob.
+          # podman push does not add it; patch post-push via registry API and update digest.
+          PATCHED_DIGEST=$(just _patch-media-type \
+            '${{ matrix.app }}' \
+            "${DIGEST}" \
+            "${STAGING_TAG}" \
+            "ghcr.io" \
+            "${{ github.repository_owner }}" \
+            "${{ github.repository }}")
+          echo "DIGEST=${PATCHED_DIGEST}" >> "$GITHUB_ENV"
+          echo "${PATCHED_DIGEST}" > /tmp/digest.txt
+          echo "==> Patched manifest: ${STAGING_TAG} @ ${PATCHED_DIGEST}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install cosign
         if: steps.arch-check.outputs.skip != 'true'
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0

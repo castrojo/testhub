@@ -436,22 +436,25 @@ build app="ghostty":
       ' > /dev/null \
       && echo "All required labels present."
     # Push to ghcr.io with zstd:chunked
-    # -f oci ensures mediaType is present in manifest descriptors (required by flatpak install)
     gh auth token | podman login ghcr.io --username "${GH_OWNER}" --password-stdin
-    podman push -f oci --compression-format=zstd:chunked \
+    podman push --compression-format=zstd:chunked \
       --digestfile "/tmp/${APP}-ghcr-digest.txt" \
       "${CHUNKED_ID}" "docker://ghcr.io/${GH_REPO}/${APP}:latest-${ARCH}"
-    GHCR_DIGEST=$(cat "/tmp/${APP}-ghcr-digest.txt")
-    echo "==> ghcr.io digest: ${GHCR_DIGEST}"
-    # Version and stable tags — set for bundle-repack; for manifest.yaml apps, requires x-version field
+    RAW_GHCR_DIGEST=$(cat "/tmp/${APP}-ghcr-digest.txt")
+    echo "==> ghcr.io digest (raw): ${RAW_GHCR_DIGEST}"
+    # Patch manifest blob to add top-level mediaType field — required by flatpak >= 1.16
+    GHCR_DIGEST=$(just _patch-media-type "${APP}" "${RAW_GHCR_DIGEST}" "latest-${ARCH}" "ghcr.io" "${GH_OWNER}" "${GH_REPO}")
+    echo "${GHCR_DIGEST}" > "/tmp/${APP}-ghcr-digest.txt"
+    echo "==> ghcr.io digest (patched): ${GHCR_DIGEST}"
+    # Version and stable tags — copy from already-patched latest-<arch> tag
     if [[ -n "${VERSION:-}" ]]; then
         echo "==> Pushing version tag: ${VERSION}-${ARCH}"
-        skopeo copy -f oci --compression-format=zstd:chunked --dest-creds "${GH_OWNER}:$(gh auth token)" \
-          "containers-storage:${CHUNKED_ID}" \
+        skopeo copy \
+          "docker://ghcr.io/${GH_REPO}/${APP}:latest-${ARCH}" \
           "docker://ghcr.io/${GH_REPO}/${APP}:${VERSION}-${ARCH}"
         echo "==> Pushing stable tag"
-        skopeo copy -f oci --compression-format=zstd:chunked --dest-creds "${GH_OWNER}:$(gh auth token)" \
-          "containers-storage:${CHUNKED_ID}" \
+        skopeo copy \
+          "docker://ghcr.io/${GH_REPO}/${APP}:latest-${ARCH}" \
           "docker://ghcr.io/${GH_REPO}/${APP}:stable-${ARCH}"
         echo "==> Tags pushed: latest-${ARCH}, ${VERSION}-${ARCH}, stable-${ARCH}"
     fi
@@ -545,6 +548,68 @@ loop app="ghostty":
       ' > /dev/null && echo "All required labels present."
     echo "==> LOCAL_ONLY done. ${DIGEST} — layers: ${LAYER_COUNT}"
 
+# Patch the OCI manifest blob on a registry to add top-level "mediaType" field.
+# Required because flatpak >= 1.16 refuses manifests that lack a top-level mediaType.
+# The OCI spec marks this field as optional; standard push tools (podman, skopeo) do not add it.
+# Usage: just _patch-media-type APP OLD_DIGEST TAG REGISTRY GH_OWNER GH_REPO
+#   TAG: the tag to PUT the patched manifest to (e.g. "latest-x86_64" or "sha-abc123-amd64")
+# Prints the new digest (sha256:HASH) to stdout.
+# Accepts OLD_DIGEST as bare hex or sha256:-prefixed.
+_patch-media-type app old_digest tag registry gh_owner gh_repo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP="{{ app }}"
+    APP_LOWER="${APP,,}"
+    OLD_DIGEST="{{ old_digest }}"
+    OLD_DIGEST="${OLD_DIGEST#sha256:}"
+    TAG="{{ tag }}"
+    REGISTRY="{{ registry }}"
+    GH_OWNER="{{ gh_owner }}"
+    GH_REPO="{{ gh_repo }}"
+
+    # Only patch ghcr.io (local registry skips — flatpak never reads from localhost)
+    if [[ "${REGISTRY}" != "ghcr.io" ]]; then
+        echo "sha256:${OLD_DIGEST}"
+        exit 0
+    fi
+
+    GH_TOKEN=$(gh auth token)
+    GHCR_TOKEN=$(curl -sS \
+        -u "${GH_OWNER}:${GH_TOKEN}" \
+        "https://ghcr.io/token?scope=repository:${GH_REPO}/${APP_LOWER}:pull,push" \
+        | jq -r '.token')
+
+    # Fetch existing manifest blob by digest
+    MANIFEST=$(curl -sS \
+        -H "Authorization: Bearer ${GHCR_TOKEN}" \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+        "https://ghcr.io/v2/${GH_REPO}/${APP_LOWER}/manifests/sha256:${OLD_DIGEST}")
+
+    # Skip if already has mediaType
+    if echo "${MANIFEST}" | jq -e '.mediaType' > /dev/null 2>&1; then
+        echo "sha256:${OLD_DIGEST}"
+        exit 0
+    fi
+
+    # Inject mediaType as second field (after schemaVersion), compact JSON
+    PATCHED=$(echo "${MANIFEST}" | jq -c \
+        'to_entries | map(if .key == "schemaVersion" then ., {"key": "mediaType", "value": "application/vnd.oci.image.manifest.v1+json"} else . end) | from_entries')
+    NEW_DIGEST=$(echo -n "${PATCHED}" | sha256sum | cut -d' ' -f1)
+
+    # PUT patched manifest under the requested tag
+    HTTP_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Authorization: Bearer ${GHCR_TOKEN}" \
+        -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+        --data-raw "${PATCHED}" \
+        "https://ghcr.io/v2/${GH_REPO}/${APP_LOWER}/manifests/${TAG}")
+    if [[ "${HTTP_STATUS}" != "201" && "${HTTP_STATUS}" != "200" ]]; then
+        echo "ERROR: PUT manifest returned HTTP ${HTTP_STATUS}" >&2
+        exit 1
+    fi
+
+    echo "sha256:${NEW_DIGEST}"
+
 # Push per-arch image to registry with zstd:chunked compression
 # Usage: just push APP ARCH [REGISTRY]
 # SCOPE: login, podman push, digestfile, version+stable tags.
@@ -578,27 +643,28 @@ push app arch registry="ghcr.io":
     fi
 
     # Push :latest-<arch> with zstd:chunked
-    # -f oci ensures the OCI manifest descriptor in the remote index.json includes
-    # mediaType, which flatpak requires when mirroring to its local child OCI registry.
     TARGET="${REGISTRY}/${GH_REPO}/${APP_LOWER}:latest-${ARCH}"
     podman push \
-        -f oci \
         --compression-format=zstd:chunked \
         --digestfile "/tmp/digest.txt" \
         "${CHUNKED_ID}" "docker://${TARGET}"
-    DIGEST=$(cat /tmp/digest.txt)
-    echo "==> Pushed ${TARGET} @ ${DIGEST}"
+    RAW_DIGEST=$(cat /tmp/digest.txt)
+    echo "==> Pushed ${TARGET} @ ${RAW_DIGEST}"
 
-    # Version and stable tags
+    # Patch manifest blob to add top-level mediaType field — required by flatpak >= 1.16
+    # podman push does not add mediaType to the manifest JSON body; must be patched post-push.
+    DIGEST=$(just _patch-media-type "${APP}" "${RAW_DIGEST}" "latest-${ARCH}" "${REGISTRY}" "${GH_OWNER}" "${GH_REPO}")
+    echo "${DIGEST}" > /tmp/digest.txt
+    echo "==> Patched manifest: ${TARGET} @ ${DIGEST}"
+
+    # Version and stable tags — copy from the already-patched latest-<arch> tag
     if [[ -n "${VERSION}" ]]; then
-        podman push \
-            -f oci \
-            --compression-format=zstd:chunked \
-            "${CHUNKED_ID}" "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:${VERSION}-${ARCH}"
-        podman push \
-            -f oci \
-            --compression-format=zstd:chunked \
-            "${CHUNKED_ID}" "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:stable-${ARCH}"
+        skopeo copy \
+            "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:latest-${ARCH}" \
+            "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:${VERSION}-${ARCH}"
+        skopeo copy \
+            "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:latest-${ARCH}" \
+            "docker://${REGISTRY}/${GH_REPO}/${APP_LOWER}:stable-${ARCH}"
         echo "==> Tags pushed: latest-${ARCH}, ${VERSION}-${ARCH}, stable-${ARCH}"
     fi
 
