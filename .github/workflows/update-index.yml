@@ -188,12 +188,15 @@ jobs:
             DIR=$(basename "$(dirname "${DIGEST_FILE}")")
             REST="${DIR#digest-}"
             ARCH="${REST##*-}"
-            APP="${REST%-${ARCH}}"
-            APP="${APP,,}"
+            APP_ORIG="${REST%-${ARCH}}"
+            APP="${APP_ORIG,,}"
             DIGEST=$(cat "${DIGEST_FILE}")
 
-            # Per-app gate: only write entry if e2e-install passed for this app+arch
-            if [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
+            # Per-app gate: only write entry if e2e-install passed for this app+arch.
+            # Artifact names preserve original case (e.g. org.altlinux.Tuner);
+            # check both lowercased and original-case artifact dirs to be safe.
+            if [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP_ORIG}-${ARCH}" ]] && \
+               [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
               echo "==> SKIP index update: ${APP} ${ARCH} — e2e-install did not pass"
               continue
             fi
