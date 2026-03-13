@@ -5,7 +5,7 @@ sdk: org.gnome.Sdk
 default-branch: stable
 x-chunkah-max-layers: "8"
 x-skip-launch-check: true  # GUI app: requires Wayland/X11 display; exits 1 in headless CI
-command: ghostty
+command: ghostty-wrapper
 finish-args:
   - --device=all  # Required: GPU access (Vulkan/Metal) and PTY device access for terminal
   # Windowing
@@ -57,4 +57,12 @@ modules:
 
       - type: file
         path: com.mitchellh.ghostty.metainfo.xml
+
+  - name: ghostty-wrapper
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 ghostty-wrapper.sh /app/bin/ghostty-wrapper
+    sources:
+      - type: file
+        path: ghostty-wrapper.sh
 
