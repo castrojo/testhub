@@ -4,11 +4,16 @@ name: Sync Flatpak Remote Index
 # Running as a separate workflow serialises all gh-pages pushes — no race
 # between concurrent app builds writing to the same branch.
 #
-# Job order enforces a strict gate:
+# Job order enforces a per-app gate:
 #   prepare → e2e-install → commit-index
 #
-# The gh-pages index is only committed AFTER e2e-install passes.
-# This prevents the index from pointing at a broken image that cannot be installed.
+# e2e-install uploads an e2e-passed-<app>-<arch> artifact ONLY on success.
+# commit-index checks for that artifact before writing each app's index entry.
+# An app whose e2e-install failed is silently skipped — its last good index
+# entry is preserved. Other apps in the same build are not affected.
+#
+# This prevents a single broken app from blocking the index update for all apps.
+# The index always reflects the last known-good state per app.
 #
 # commit-index re-downloads the digest artifacts from the triggering build run
 # and reruns update-index.py — deterministic, no cross-job artifact needed.
@@ -72,8 +77,9 @@ jobs:
           echo "has_entries=$(echo "${MATRIX}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("true" if d.get("include") else "false")')" >> "$GITHUB_OUTPUT"
 
   # ── E2E install test ──────────────────────────────────────────────────────
-  # Gate: runs BEFORE gh-pages is updated. The index is only committed if this passes.
-  # Installs from ghcr.io directly (images are live there regardless of gh-pages state).
+  # Gate: runs BEFORE gh-pages is updated. Per-app: each matrix job uploads
+  # an e2e-passed-<app>-<arch> artifact ONLY on success. commit-index checks
+  # for that artifact before writing each app's index entry.
   #
   # Launch check: exit 0 = clean exit (PASS), exit 124 = timeout/headless GUI (PASS), other = FAIL
   # Apps that cannot launch headless must set x-skip-launch-check: true in their manifest.
@@ -102,7 +108,17 @@ jobs:
             | tar -xz -C /usr/local/bin just
 
       - name: Run install test
-        run: just run-test '${{ matrix.app }}' '${{ matrix.arch }}'
+        run: |
+          just run-test '${{ matrix.app }}' '${{ matrix.arch }}'
+          touch /tmp/e2e-passed-marker
+
+      - name: Upload e2e-passed artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
+          path: /tmp/e2e-passed-marker
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Uninstall on failure
         if: always()
@@ -111,16 +127,16 @@ jobs:
           [[ -n "${APP_ID}" ]] && flatpak uninstall --system --noninteractive "${APP_ID}" || true
 
   # ── Commit index to gh-pages ──────────────────────────────────────────────
-  # Only runs after e2e-install passes — the gate is enforced by needs: [e2e-install].
-  # Re-downloads digest artifacts from the triggering build run and reruns
-  # update-index.py — deterministic, no cross-job artifact transfer needed.
+  # Runs after e2e-install finishes (pass or fail — not skipped).
+  # Per-app gate: only writes index entries for apps whose e2e-passed artifact exists.
+  # Apps that failed e2e are skipped; their last good index entry is preserved.
   # Serialised via concurrency group to prevent races between concurrent builds.
   commit-index:
     needs: [prepare, e2e-install]
     if: |
       always() &&
       needs.prepare.result == 'success' &&
-      needs.e2e-install.result == 'success'
+      needs.e2e-install.result != 'skipped'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -147,6 +163,13 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Download all e2e-passed artifacts from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: e2e-passed-*
+          path: /tmp/e2e-passed
+        continue-on-error: true
+
       - name: Login to ghcr.io for skopeo inspect
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
@@ -168,6 +191,13 @@ jobs:
             APP="${REST%-${ARCH}}"
             APP="${APP,,}"
             DIGEST=$(cat "${DIGEST_FILE}")
+
+            # Per-app gate: only write entry if e2e-install passed for this app+arch
+            if [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
+              echo "==> SKIP index update: ${APP} ${ARCH} — e2e-install did not pass"
+              continue
+            fi
+
             echo "==> Updating index: ${APP} ${ARCH} ${DIGEST}"
             python3 ../main/scripts/update-index.py \
               --app "${APP}" \
