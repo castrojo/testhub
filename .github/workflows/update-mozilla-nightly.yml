@@ -1,0 +1,109 @@
+name: Update Mozilla Nightly sha256s
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Monday 6am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-sha256s:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update firefox-nightly x86_64 sha256
+        id: ff-x86_64
+        run: |
+          URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz"
+          curl -sL --output /tmp/firefox-x86_64.tar.xz "$URL"
+          NEW_SHA256=$(sha256sum /tmp/firefox-x86_64.tar.xz | cut -d' ' -f1)
+          echo "new=$NEW_SHA256" >> "$GITHUB_OUTPUT"
+          OLD_SHA256=$(grep -A1 'firefox-150.0a1.en-US.linux-x86_64.tar.xz' flatpaks/firefox-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
+          echo "old=$OLD_SHA256" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
+            sed -i "/url:.*firefox-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/firefox-nightly/manifest.yaml
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update firefox-nightly aarch64 sha256
+        id: ff-aarch64
+        run: |
+          URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz"
+          curl -sL --output /tmp/firefox-aarch64.tar.xz "$URL"
+          NEW_SHA256=$(sha256sum /tmp/firefox-aarch64.tar.xz | cut -d' ' -f1)
+          echo "new=$NEW_SHA256" >> "$GITHUB_OUTPUT"
+          OLD_SHA256=$(grep -A1 'firefox-150.0a1.en-US.linux-aarch64.tar.xz' flatpaks/firefox-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
+          echo "old=$OLD_SHA256" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
+            sed -i "/url:.*firefox-150.0a1.en-US.linux-aarch64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/firefox-nightly/manifest.yaml
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update thunderbird-nightly x86_64 sha256
+        id: tb-x86_64
+        run: |
+          URL="https://download-installer.cdn.mozilla.net/pub/thunderbird/nightly/latest-comm-central/thunderbird-150.0a1.en-US.linux-x86_64.tar.xz"
+          curl -sL --output /tmp/thunderbird-x86_64.tar.xz "$URL"
+          NEW_SHA256=$(sha256sum /tmp/thunderbird-x86_64.tar.xz | cut -d' ' -f1)
+          echo "new=$NEW_SHA256" >> "$GITHUB_OUTPUT"
+          OLD_SHA256=$(grep -A1 'thunderbird-150.0a1.en-US.linux-x86_64.tar.xz' flatpaks/thunderbird-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
+          echo "old=$OLD_SHA256" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
+            sed -i "/url:.*thunderbird-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/thunderbird-nightly/manifest.yaml
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push if changed
+        id: commit
+        env:
+          FF_CHANGED: ${{ steps.ff-x86_64.outputs.changed == 'true' || steps.ff-aarch64.outputs.changed == 'true' }}
+          TB_CHANGED: ${{ steps.tb-x86_64.outputs.changed == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && echo "ff_changed=false" >> "$GITHUB_OUTPUT" && echo "tb_changed=false" >> "$GITHUB_OUTPUT" && exit 0
+
+          # Determine which apps changed
+          FF_MANIFEST_CHANGED=false
+          TB_MANIFEST_CHANGED=false
+          if ! git diff --quiet -- flatpaks/firefox-nightly/manifest.yaml; then
+            FF_MANIFEST_CHANGED=true
+          fi
+          if ! git diff --quiet -- flatpaks/thunderbird-nightly/manifest.yaml; then
+            TB_MANIFEST_CHANGED=true
+          fi
+          echo "ff_changed=$FF_MANIFEST_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "tb_changed=$TB_MANIFEST_CHANGED" >> "$GITHUB_OUTPUT"
+
+          git add flatpaks/firefox-nightly/manifest.yaml flatpaks/thunderbird-nightly/manifest.yaml
+          git commit -m "chore(nightly): update Mozilla nightly sha256s
+
+Auto-refresh sha256 for firefox-nightly and thunderbird-nightly.
+Mozilla rebuilds nightly at the same URL daily; version string stays
+150.0a1 so Renovate cannot track this.
+
+Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          git pull --rebase
+          git push
+
+      - name: Trigger firefox-nightly build
+        if: steps.commit.outputs.ff_changed == 'true'
+        run: gh workflow run build.yml -f app=firefox-nightly
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger thunderbird-nightly build
+        if: steps.commit.outputs.tb_changed == 'true'
+        run: gh workflow run build.yml -f app=thunderbird-nightly
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -26,7 +26,11 @@ Renovate manages dependency pins in this repo via the self-hosted runner at
 ## Apps with no Renovate coverage (intentional)
 
 - `lmstudio` — CDN URL (`installers.lmstudio.ai`), no standard datasource
-- `firefox-nightly` / `thunderbird-nightly` — Mozilla rolling nightly, no version tags
+- `firefox-nightly` / `thunderbird-nightly` — Mozilla rolling nightly, no version tags.
+  The version string (`150.0a1`) never changes; Mozilla rebuilds daily at the same URL.
+  **Handled by:** `.github/workflows/update-mozilla-nightly.yml` runs weekly (Monday 6am UTC)
+  to re-download each tarball, recompute sha256, update the manifests, commit to main, and
+  trigger rebuilds for any app whose sha256 changed.
 - `virtualbox` — uses `x-checker-data` (flathub tooling), not regex
 - `org.altlinux.Tuner` / `io.github.DenysMb.Kontainer` — git tags at non-GitHub forges
 
