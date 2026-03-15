@@ -2,12 +2,11 @@ name: Update Mozilla Nightly sha256s
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Daily 6am UTC
+    - cron: '0 6 * * 1'  # Monday 6am UTC
   workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   update-sha256s:
@@ -64,10 +63,8 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and open PR if changed
+      - name: Commit and push if changed
         id: commit
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -91,20 +88,11 @@ jobs:
           echo "ff_changed=$FF_MANIFEST_CHANGED" >> "$GITHUB_OUTPUT"
           echo "tb_changed=$TB_MANIFEST_CHANGED" >> "$GITHUB_OUTPUT"
 
-          BRANCH="chore/nightly-sha256-$(date +%Y%m%d)"
-          git checkout -b "$BRANCH"
           git add flatpaks/firefox-nightly/manifest.yaml flatpaks/thunderbird-nightly/manifest.yaml
           printf 'chore(nightly): update Mozilla nightly sha256s\n\nAuto-refresh sha256 for firefox-nightly and thunderbird-nightly.\nMozilla rebuilds nightly at the same URL daily; version string stays\n150.0a1 so Renovate cannot track this.\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\n' > /tmp/nightly-commit-msg.txt
           git commit -F /tmp/nightly-commit-msg.txt
-          git push origin "$BRANCH"
-
-          # Open PR and enable auto-merge so it lands once CI passes
-          gh pr create \
-            --title "chore(nightly): update Mozilla nightly sha256s $(date +%Y-%m-%d)" \
-            --body "Auto-refresh sha256 for firefox-nightly and thunderbird-nightly. Mozilla rebuilds nightly at the same URL daily; version string stays 150.0a1 so Renovate cannot track this." \
-            --base main \
-            --head "$BRANCH" || true
-          gh pr merge "$BRANCH" --auto --squash || true
+          git pull --rebase
+          git push
 
       - name: Trigger firefox-nightly build
         if: steps.commit.outputs.ff_changed == 'true'
