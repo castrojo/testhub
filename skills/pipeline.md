@@ -481,6 +481,8 @@ Simultaneous pushes create concurrent runs that fight for the same runners and w
 
 6. **Concurrency group awareness.** `build.yml` has a `concurrency` group per app — a new push for the same app cancels an in-progress run. This is intentional for feature branches but undesirable for `main`. Avoid pushing rapidly in succession on main.
 
+7. **Always use `actions/cache`.** Any workflow that downloads large files, computes hashes, or repeats expensive operations should cache intermediate results. Use ETags or content hashes as cache keys so the cache is only busted when upstream actually changes. Prefer `actions/cache/restore` + `actions/cache/save` (split) over the combined `actions/cache` so you can save even on failure (`if: always()`). Example pattern used in `update-mozilla-nightly.yml`: cache ETag files with key `<prefix>-${{ github.run_id }}` and `restore-keys: <prefix>-` so each run saves fresh ETags while always restoring the most recent prior run's values.
+
 **Quick check command:**
 ```bash
 gh run list --repo projectbluefin/testhub --workflow=build.yml --limit 5 \

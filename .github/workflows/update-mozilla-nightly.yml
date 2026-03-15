@@ -2,7 +2,7 @@ name: Update Mozilla Nightly sha256s
 
 on:
   schedule:
-    - cron: '0 6 * * 1'  # Monday 6am UTC
+    - cron: '0 */12 * * *'  # Every 12 hours
   workflow_dispatch:
 
 permissions:
@@ -16,52 +16,74 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Update firefox-nightly x86_64 sha256
-        id: ff-x86_64
+      - name: Restore cached ETags
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/nightly-etags
+          key: mozilla-nightly-etags-${{ github.run_id }}
+          restore-keys: mozilla-nightly-etags-
+
+      - name: Check ETags and download if changed
+        id: check
         run: |
-          URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz"
-          curl -sL --output /tmp/firefox-x86_64.tar.xz "$URL"
-          NEW_SHA256=$(sha256sum /tmp/firefox-x86_64.tar.xz | cut -d' ' -f1)
-          OLD_SHA256=$(grep -A1 'firefox-150.0a1.en-US.linux-x86_64.tar.xz' flatpaks/firefox-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
-          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
-            sed -i "/url:.*firefox-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/firefox-nightly/manifest.yaml
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          mkdir -p /tmp/nightly-etags
+
+          FF_X86_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz"
+          FF_ARM_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz"
+          TB_X86_URL="https://download-installer.cdn.mozilla.net/pub/thunderbird/nightly/latest-comm-central/thunderbird-150.0a1.en-US.linux-x86_64.tar.xz"
+
+          CHANGED=false
+
+          check_and_download() {
+            local name="$1" url="$2" etag_file="/tmp/nightly-etags/${1}.etag"
+            local new_etag old_etag
+            new_etag=$(curl -sI "$url" | grep -i '^etag:' | tr -d '\r' | awk '{print $2}')
+            old_etag=$(cat "$etag_file" 2>/dev/null || echo "")
+            if [ "$new_etag" = "$old_etag" ] && [ -n "$new_etag" ]; then
+              echo "$name: ETag unchanged ($new_etag), skipping download"
+              echo "changed_${name}=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name: ETag changed ($old_etag -> $new_etag), downloading..."
+              curl -sL --output "/tmp/${name}.tar.xz" "$url"
+              echo "$new_etag" > "$etag_file"
+              echo "changed_${name}=true" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          check_and_download ff_x86  "$FF_X86_URL"
+          check_and_download ff_arm  "$FF_ARM_URL"
+          check_and_download tb_x86  "$TB_X86_URL"
+
+      - name: Update firefox-nightly x86_64 sha256
+        if: steps.check.outputs.changed_ff_x86 == 'true'
+        run: |
+          NEW=$(sha256sum /tmp/ff_x86.tar.xz | cut -d' ' -f1)
+          sed -i "/url:.*firefox-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
 
       - name: Update firefox-nightly aarch64 sha256
-        id: ff-aarch64
+        if: steps.check.outputs.changed_ff_arm == 'true'
         run: |
-          URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz"
-          curl -sL --output /tmp/firefox-aarch64.tar.xz "$URL"
-          NEW_SHA256=$(sha256sum /tmp/firefox-aarch64.tar.xz | cut -d' ' -f1)
-          OLD_SHA256=$(grep -A1 'firefox-150.0a1.en-US.linux-aarch64.tar.xz' flatpaks/firefox-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
-          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
-            sed -i "/url:.*firefox-150.0a1.en-US.linux-aarch64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/firefox-nightly/manifest.yaml
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          NEW=$(sha256sum /tmp/ff_arm.tar.xz | cut -d' ' -f1)
+          sed -i "/url:.*firefox-150.0a1.en-US.linux-aarch64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
 
       - name: Update thunderbird-nightly x86_64 sha256
-        id: tb-x86_64
+        if: steps.check.outputs.changed_tb_x86 == 'true'
         run: |
-          URL="https://download-installer.cdn.mozilla.net/pub/thunderbird/nightly/latest-comm-central/thunderbird-150.0a1.en-US.linux-x86_64.tar.xz"
-          curl -sL --output /tmp/thunderbird-x86_64.tar.xz "$URL"
-          NEW_SHA256=$(sha256sum /tmp/thunderbird-x86_64.tar.xz | cut -d' ' -f1)
-          OLD_SHA256=$(grep -A1 'thunderbird-150.0a1.en-US.linux-x86_64.tar.xz' flatpaks/thunderbird-nightly/manifest.yaml | grep 'sha256:' | awk '{print $2}')
-          if [ "$NEW_SHA256" != "$OLD_SHA256" ]; then
-            sed -i "/url:.*thunderbird-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW_SHA256/}" flatpaks/thunderbird-nightly/manifest.yaml
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          NEW=$(sha256sum /tmp/tb_x86.tar.xz | cut -d' ' -f1)
+          sed -i "/url:.*thunderbird-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/thunderbird-nightly/manifest.yaml
+
+      - name: Save ETags to cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: /tmp/nightly-etags
+          key: mozilla-nightly-etags-${{ github.run_id }}
 
       - name: Open PR if sha256s changed
-        id: pr
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NOTE: PRs opened with GITHUB_TOKEN do not trigger pull_request CI.
+          # Add a PAT as NIGHTLY_UPDATE_TOKEN to make builds trigger automatically.
+          GH_TOKEN: ${{ secrets.NIGHTLY_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -71,16 +93,16 @@ jobs:
             exit 0
           fi
 
-          BRANCH="chore/nightly-sha256-$(date -u +%Y%m%d)"
+          BRANCH="chore/nightly-sha256-$(date -u +%Y%m%d-%H%M)"
           git checkout -b "$BRANCH"
           git add flatpaks/firefox-nightly/manifest.yaml flatpaks/thunderbird-nightly/manifest.yaml
-          printf 'chore(nightly): update Mozilla nightly sha256s\n\nAuto-refresh sha256 for firefox-nightly and thunderbird-nightly.\nMozilla rebuilds nightly at the same URL daily; version string stays\n150.0a1 so Renovate cannot track this.\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\n' > /tmp/nightly-commit-msg.txt
-          git commit -F /tmp/nightly-commit-msg.txt
+          printf 'chore(nightly): update Mozilla nightly sha256s\n\nAuto-refresh sha256 for firefox-nightly and thunderbird-nightly.\nMozilla rebuilds nightly at the same URL; ETag changed so new build\nis available. Renovate cannot track this.\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\n' > /tmp/commit-msg.txt
+          git commit -F /tmp/commit-msg.txt
           git push origin "$BRANCH"
 
           gh pr create \
             --title "chore(nightly): update Mozilla nightly sha256s $(date -u +%Y-%m-%d)" \
-            --body "Auto-refresh sha256 for firefox-nightly and thunderbird-nightly. Mozilla rebuilds nightly at the same URL daily; version string stays 150.0a1 so Renovate cannot track this." \
+            --body "ETag-triggered sha256 refresh for firefox-nightly and/or thunderbird-nightly." \
             --base main \
-            --head "$BRANCH"
-          gh pr merge "$BRANCH" --auto --squash
+            --head "$BRANCH" || true
+          gh pr merge "$BRANCH" --auto --squash || true
