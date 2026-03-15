@@ -198,7 +198,7 @@ that passes `--no-sandbox` to the Electron binary.
 
 **KVM:** Needs `--device=all` in finish-args for Lima VM backend (KVM access).
 
-**Permanent lint exceptions** (all 7 must be in `exceptions.json`):
+**Permanent lint exceptions** (5 required, always in `exceptions.json`):
 | Exception | Reason |
 |---|---|
 | `appid-filename-mismatch` | manifest.yaml not named after app-id |
@@ -206,5 +206,9 @@ that passes `--no-sandbox` to the Electron binary.
 | `finish-args-home-filesystem-access` | Required for Rancher Desktop config/data |
 | `appstream-no-flathub-manifest-key` | Not a Flathub submission |
 | `metainfo-missing-screenshots` | No screenshots in metainfo |
-| `appstream-external-screenshot-url` | If screenshots are added later |
-| `appstream-screenshots-not-mirrored-in-ostree` | Not mirrored to Flathub CDN |
+
+**Optional exceptions (add only if screenshots are added to metainfo):**
+| Exception | Reason |
+|---|---|
+| `appstream-external-screenshot-url` | Screenshots hosted at external URLs |
+| `appstream-screenshots-not-mirrored-in-ostree` | Screenshots not mirrored to Flathub CDN |

@@ -239,9 +239,7 @@ OSTree ref shape, appstream catalog in OSTree, screenshot mirroring. Path `repo`
 default `repo-dir` from flatpak/flatpak-github-actions v6. This is the same check Flathub
 runs on all production builds.
 
-**Three distinct stages:** lint fires at manifest (pre-build), builddir (post-build staging), and repo (post-OSTree export). An exception needed at builddir is NOT automatically applied at repo stage — always verify `exceptions.json` covers all three stages before declaring a lint failure fixed.
-
-All three steps use the same `exceptions.json` file.
+**Three distinct stages:** lint fires at manifest (pre-build), builddir (post-build staging), and repo (post-OSTree export). While all three steps use the same `exceptions.json` file, the stages perform different checks — resolving an error at builddir does not guarantee the repo stage will pass if a different error is triggered there. Always verify `exceptions.json` covers all three stages before declaring a lint failure fixed.
 
 #### Required exceptions for non-Flathub repos
 
@@ -254,7 +252,7 @@ app's metainfo content:
 | `appstream-screenshots-not-mirrored-in-ostree` | App has screenshots in metainfo but `--mirror-screenshots-url` not passed | If app has screenshots |
 | `appstream-external-screenshot-url` | App has screenshots pointing to external URLs (not dl.flathub.org/media) | If app has screenshots |
 | `metainfo-missing-screenshots` | App has no screenshots in metainfo | If app has no screenshots |
-| `elf-arch-multiple-found` | App bundles multiple ELF architectures (Electron apps do this) | Electron apps |
+| `elf-arch-multiple-found` | App bundles multiple ELF architectures | If bundling Electron or multi-arch binaries |
 
 **Practical rule:** Add `appstream-no-flathub-manifest-key` universally. Then:
 - If the app **has** screenshots in metainfo: add `appstream-external-screenshot-url` + `appstream-screenshots-not-mirrored-in-ostree`
