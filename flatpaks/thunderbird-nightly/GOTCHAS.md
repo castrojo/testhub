@@ -36,3 +36,19 @@ in `build.yml` globs for `*.metainfo.xml` — this file is now picked up by vali
 Thunderbird Nightly does not have a published BaseApp on Flathub (unlike Firefox which
 has `org.mozilla.firefox.BaseApp`). Uses `org.freedesktop.Platform//24.08` directly.
 No pre-install step needed in clean environments.
+
+## Lint exceptions — permanent
+
+The Nightly metainfo (`org.mozilla.thunderbird.nightly.metainfo.xml`) does not include
+screenshots or a developer name tag. This causes permanent lint errors declared in
+`exceptions.json` under `org.mozilla.thunderbird.nightly`:
+
+- `metainfo-missing-screenshots` — fires at the **builddir** lint stage (no screenshots in metainfo)
+- `appstream-missing-developer-name` — fires at the **builddir** lint stage (no `<developer>` tag)
+- `appstream-screenshots-not-mirrored-in-ostree` — fires at the **repo** lint stage
+
+All three must be present in exceptions.json; omitting any will cause the x86_64 build to fail.
+
+Root cause of past failures: the exceptions.json initially only contained
+`appid-filename-mismatch`. The metainfo exceptions were added later after CI failures
+from runs on commit `2fb7cf5` (the Justfile-First pipeline refactor).

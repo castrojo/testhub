@@ -43,3 +43,18 @@ Pinned to the versions from flathub/shared-modules @ 11f1a3afd8b6b2447b49e1872a2
 SDL patches (sdl-libx11-build.patch, sdl-check-for-SDL_VIDEO_X11_BACKINGSTORE.patch,
 sdl-sysloadso-buffer-length.patch, libsdl-1.2.15-strict-prototypes.patch) are stored
 in flatpaks/virtualbox/ alongside the manifest.
+
+## Lint exceptions — permanent
+
+VirtualBox's upstream `.metainfo.xml` contains screenshots hosted at external URLs
+(not mirrored to `https://dl.flathub.org/media`). This causes two permanent lint errors:
+
+- `appstream-external-screenshot-url` — fires at the **builddir** lint stage
+- `appstream-screenshots-not-mirrored-in-ostree` — fires at the **repo** lint stage
+
+Both are declared in `exceptions.json` under `org.virtualbox.VirtualBox`. Both must be
+present; omitting either will cause the x86_64 build to fail.
+
+Root cause of past failures: the exceptions.json initially only contained
+`appid-filename-mismatch`. The screenshot exceptions were added later after CI failures
+from runs on commit `2fb7cf5` (the Justfile-First pipeline refactor).
