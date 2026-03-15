@@ -461,6 +461,33 @@ non-trivial restructuring. Deferred to avoid blocking active work.
 3. Replace `container:` stanza + inline steps with `devcontainers/ci@v0.3` step calling the recipe
 4. Keep checkout, artifact upload, and issue-filing as bare runner steps
 
+## GitHub Actions efficiency — stage your pushes
+
+Each push to `main` triggers `build.yml` for **all apps** (the `all apps` matrix strategy).
+Each manually dispatched `gh workflow run build.yml -f app=<x>` uses additional runner slots.
+Simultaneous pushes create concurrent runs that fight for the same runners and waste minutes.
+
+**Rules for agents and humans:**
+
+1. **Check before pushing.** Always run `gh run list --repo projectbluefin/testhub --workflow=build.yml --json status --jq '[.[]|select(.status=="in_progress")]|length'` before pushing. If any run is in_progress, batch your changes and wait, or push once at the end.
+
+2. **Batch all changes into one push.** When fixing multiple apps in one session, stage all commits locally (`git commit` each) then push once (`git push`). One push = one CI run.
+
+3. **Do not manually trigger builds after a push.** A push to `main` already triggers `build.yml` for all apps. Manually running `gh workflow run build.yml` on top of a push doubles the runner usage. Only manually dispatch if your change did NOT trigger a build (e.g., docs-only commits, or you need to test a specific app that a previous push didn't cover).
+
+4. **Do not push from multiple parallel agents simultaneously.** When multiple background agents are each committing and pushing independently, they create separate CI runs per push. Instead, have agents commit locally and coordinate a single push, or accept that they will create separate runs and ensure agents check for conflicts before pushing.
+
+5. **For automated bot workflows** (like `update-mozilla-nightly.yml`): always push to a branch and open a PR rather than trying to push directly to `main`. The merge queue serializes changes and prevents concurrent main-branch build storms.
+
+6. **Concurrency group awareness.** `build.yml` has a `concurrency` group per app — a new push for the same app cancels an in-progress run. This is intentional for feature branches but undesirable for `main`. Avoid pushing rapidly in succession on main.
+
+**Quick check command:**
+```bash
+gh run list --repo projectbluefin/testhub --workflow=build.yml --limit 5 \
+  --json displayTitle,status,conclusion,createdAt \
+  --jq '.[] | "\(.status)\t\(.conclusion // "running")\t\(.displayTitle)"'
+```
+
 ## Staging tags — do NOT delete
 
 Staging tags (`sha-<sha>-<arch>`) are intentionally permanent. ghcr.io permanently
