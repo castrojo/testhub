@@ -47,7 +47,15 @@ here; the exception is declared in `exceptions.json`.
 ## Zip layout (v1.22.0)
 The GitHub release zip extracts as a flat directory:
 - `rancher-desktop` — main Electron binary (199 MB)
-- `resources/resources/icons/logo-square-512.png` — 512×512 app icon
+- `resources/resources/icons/logo-square-512.png` — **named** 512×512 but actually 2134×2134;
+  see below
 - `resources/resources/linux/rancher-desktop.desktop` — desktop entry
 - `resources/app.asar`, `resources/app.asar.unpacked/` — app bundle
 - Various Electron/Chromium shared libraries at root
+
+## Icon: logo-square-512.png is actually 2134×2134
+Despite the filename, `logo-square-512.png` ships as a 2134×2134 PNG. flatpak-builder's export
+step validates that icons in `hicolor/512x512/` are ≤512×512 and rejects the build if not.
+
+Fix: use `python3` + GdkPixbuf (available in GNOME SDK 49) to resize the icon to 512×512 before
+installing it. Do **not** use `install -Dm644` directly — that copies the oversized file as-is.
