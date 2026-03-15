@@ -2,7 +2,7 @@ name: Update Mozilla Nightly sha256s
 
 on:
   schedule:
-    - cron: '0 6 * * 1'  # Monday 6am UTC
+    - cron: '0 6 * * *'  # Daily 6am UTC
   workflow_dispatch:
 
 permissions:
@@ -86,13 +86,8 @@ jobs:
           echo "tb_changed=$TB_MANIFEST_CHANGED" >> "$GITHUB_OUTPUT"
 
           git add flatpaks/firefox-nightly/manifest.yaml flatpaks/thunderbird-nightly/manifest.yaml
-          git commit -m "chore(nightly): update Mozilla nightly sha256s
-
-Auto-refresh sha256 for firefox-nightly and thunderbird-nightly.
-Mozilla rebuilds nightly at the same URL daily; version string stays
-150.0a1 so Renovate cannot track this.
-
-Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          printf 'chore(nightly): update Mozilla nightly sha256s\n\nAuto-refresh sha256 for firefox-nightly and thunderbird-nightly.\nMozilla rebuilds nightly at the same URL daily; version string stays\n150.0a1 so Renovate cannot track this.\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\n' > /tmp/nightly-commit-msg.txt
+          git commit -F /tmp/nightly-commit-msg.txt
           git pull --rebase
           git push
 
