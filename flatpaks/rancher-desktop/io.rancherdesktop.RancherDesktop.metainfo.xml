@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.rancherdesktop.RancherDesktop</id>
+  <name>Rancher Desktop</name>
+  <summary>Container management and Kubernetes on the desktop</summary>
+  <description>
+    <p>
+      Rancher Desktop is an open-source application that provides all the essentials
+      to work with containers and Kubernetes on the desktop. It runs a local
+      Kubernetes cluster, manages container images, and lets you choose between
+      containerd and dockerd as the container runtime — all from a single GUI.
+    </p>
+    <p>
+      Key features include a built-in Kubernetes cluster (powered by k3s), container
+      image management, support for port forwarding and volume mounts, and integration
+      with common developer tools like kubectl, nerdctl, and helm.
+    </p>
+  </description>
+  <url type="homepage">https://rancherdesktop.io/</url>
+  <url type="bugtracker">https://github.com/rancher-sandbox/rancher-desktop/issues</url>
+  <metadata_license>MIT</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <categories>
+    <category>Development</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="1.22.0" date="2026-01-19"/>
+    <release version="1.21.0" date="2025-10-24"/>
+    <release version="1.20.1" date="2025-10-01"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

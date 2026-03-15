@@ -1,0 +1,8 @@
+{
+    "io.rancherdesktop.RancherDesktop": [
+        "appid-filename-mismatch",
+        "appstream-no-flathub-manifest-key",
+        "metainfo-missing-screenshots",
+        "finish-args-home-filesystem-access"
+    ]
+}

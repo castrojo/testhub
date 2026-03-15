@@ -1,0 +1,75 @@
+app-id: io.rancherdesktop.RancherDesktop
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+default-branch: stable
+x-version: "1.22.0"
+# x-arches: upstream only ships x86_64 Linux zip; no arm64 available
+x-arches: [x86_64]
+x-skip-launch-check: true  # Electron GUI — exits 1 without display in CI
+command: rancher-desktop
+finish-args:
+  # Windowing (X11 only; Electron does not fully support Wayland yet)
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  # Full home access: Rancher Desktop stores config, images, and state under ~/.config/rancher-desktop
+  # and manages container data in non-XDG paths. No upstream support for tighter scoping.
+  - --filesystem=home
+  # Read-only host OS view: needed to detect and invoke host-installed tools
+  # (docker CLI, nerdctl, kubectl, helm, etc.) on the host PATH.
+  - --filesystem=host-os:ro
+  # Podman and container runtime sockets
+  - --filesystem=xdg-run/podman:create
+  - --filesystem=xdg-run/containers:create
+  - --filesystem=/run/docker.sock
+  # Network required: downloads images, communicates with container daemons, Kubernetes API
+  - --share=network
+  # KVM access: Rancher Desktop uses Lima for VM-based container runtime on Linux
+  - --device=all
+  # D-Bus: notifications and system tray
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Spawn host processes (e.g. open browser, invoke host CLI tools)
+  - --talk-name=org.freedesktop.Flatpak
+  # Force X11 session type (Electron environment variable)
+  - --env=XDG_SESSION_TYPE=x11
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - name: rancher-desktop
+    buildsystem: simple
+    build-commands:
+      # Unzip the Electron app bundle (flat layout at zip root)
+      - unzip -q rancher-desktop-linux-v1.22.0.zip -d /app/rancher-desktop
+
+      # Install 512x512 icon
+      - install -Dm644
+        /app/rancher-desktop/resources/resources/icons/logo-square-512.png
+        /app/share/icons/hicolor/512x512/apps/io.rancherdesktop.RancherDesktop.png
+
+      # Install and fix desktop file
+      - install -Dm644
+        /app/rancher-desktop/resources/resources/linux/rancher-desktop.desktop
+        /app/share/applications/io.rancherdesktop.RancherDesktop.desktop
+      - sed -i 's|^Exec=.*|Exec=rancher-desktop %U|'
+        /app/share/applications/io.rancherdesktop.RancherDesktop.desktop
+      - sed -i 's|^Icon=.*|Icon=io.rancherdesktop.RancherDesktop|'
+        /app/share/applications/io.rancherdesktop.RancherDesktop.desktop
+
+      # Install metainfo
+      - install -Dm644 io.rancherdesktop.RancherDesktop.metainfo.xml
+        /app/share/metainfo/io.rancherdesktop.RancherDesktop.metainfo.xml
+
+      # Wrapper script: Electron SUID sandbox is incompatible with Flatpak sandbox
+      - install -d /app/bin
+      - printf '#!/bin/sh\nexec /app/rancher-desktop/rancher-desktop --no-sandbox "$@"\n'
+        > /app/bin/rancher-desktop
+      - chmod 755 /app/bin/rancher-desktop
+    sources:
+      - type: file
+        url: https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.22.0/rancher-desktop-linux-v1.22.0.zip
+        sha256: 081bc82ac988b1467f6445dddb483395ca7b1aac2164594fd5f4e2cb7344ba6d
+        dest-filename: rancher-desktop-linux-v1.22.0.zip
+
+      - type: file
+        path: io.rancherdesktop.RancherDesktop.metainfo.xml
