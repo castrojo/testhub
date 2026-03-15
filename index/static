@@ -155,7 +155,7 @@
       "Name": "projectbluefin/testhub/org.altlinux.tuner",
       "Images": [
         {
-          "Digest": "sha256:4f861879c65b2d02975345352eebcd84ba97091bcd46eb6d4e8b3786088bd2f6",
+          "Digest": "sha256:ab79a6caae42c0e5e27162ae9526116015eeecb7fd8c29419b4995c038558df7",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
