@@ -425,6 +425,42 @@ yq '.key // empty' file.yaml
 yq '.key // ""' file.yaml
 ```
 
+## Upstream documentation — always check first
+
+Before making any change to the pipeline, CI, or tooling, check the upstream documentation
+for the relevant tool. This is mandatory. Do not rely on memory or prior usage patterns.
+
+Key upstream docs to check by area:
+
+| Area | Upstream doc |
+|---|---|
+| devcontainers/ci action | https://github.com/devcontainers/ci/blob/main/docs/github-action.md |
+| containers.dev spec | https://containers.dev/implementors/reference/ |
+| flatpak-builder | https://docs.flatpak.org/en/latest/flatpak-builder-command-reference.html |
+| flatpak/flatpak-github-actions | https://github.com/flatpak/flatpak-github-actions |
+| chunkah | https://github.com/jlebon/chunkah |
+| cosign | https://docs.sigstore.dev/cosign/signing/overview/ |
+| oras | https://oras.land/docs/ |
+
+## devcontainers/ci for compile-oci (future work)
+
+The `compile-oci` job currently uses a bare `container:` stanza with the gnome-49 image.
+The goal is to switch it to `devcontainers/ci@v0.3` so `.devcontainer/devcontainer.json`
+becomes the single source of truth for the build environment (same container for local dev
+and CI), per https://containers.dev upstream best practice.
+
+**Why not done yet:** `flatpak/flatpak-github-actions/flatpak-builder@v6` is an Actions
+action (handles ccache via actions/cache, runs flatpak-builder). It cannot be called from
+inside `devcontainers/ci`'s `runCmd`. Migration requires replacing it with equivalent
+`flatpak-builder` commands + manual ccache wiring in a Justfile recipe, which is a
+non-trivial restructuring. Deferred to avoid blocking active work.
+
+**Migration path when ready:**
+1. Create `just compile-oci <app> <arch>` recipe consolidating all build logic
+2. Handle ccache via `actions/cache` restore/save steps outside devcontainers/ci
+3. Replace `container:` stanza + inline steps with `devcontainers/ci@v0.3` step calling the recipe
+4. Keep checkout, artifact upload, and issue-filing as bare runner steps
+
 ## Staging tags — do NOT delete
 
 Staging tags (`sha-<sha>-<arch>`) are intentionally permanent. ghcr.io permanently

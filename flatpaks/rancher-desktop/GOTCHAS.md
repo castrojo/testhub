@@ -1,5 +1,16 @@
 # Rancher Desktop — Gotchas
 
+## finish-args lint exceptions
+
+`flatpak-builder-lint` flags these permissions as errors (Flathub policy); all are intentional
+and declared in `exceptions.json`:
+
+- `finish-args-flatpak-spawn-access` — `--talk-name=org.freedesktop.Flatpak` required to
+  spawn host processes (open browser, invoke host CLI tools). Same exception as Podman Desktop.
+- `finish-args-host-os-ro-filesystem-access` — `--filesystem=host-os:ro` required to detect
+  host-installed tools (docker, kubectl, nerdctl) on the host PATH.
+- `finish-args-home-filesystem-access` — `--filesystem=home` required (see above).
+
 ## x-skip-launch-check: true
 Rancher Desktop is an Electron GUI app. In the headless gnome-49 CI container it exits 1
 ("Missing X server or $DISPLAY" / Wayland not available). `x-skip-launch-check: true` is set

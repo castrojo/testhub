@@ -17,6 +17,12 @@ that area.
 | `skills/app-gotchas.md` | Per-app known issues (firefox-nightly, lmstudio, goose, bundle-repack) |
 | `skills/renovate.md` | Renovate limitations for manifest.yaml and release.yaml |
 
+## Upstream documentation — always check first
+
+Before making any change to the pipeline, CI, or tooling, fetch and read the upstream
+documentation for the relevant tool. Do not rely on memory or prior usage patterns. See
+`skills/pipeline.md` for a table of key upstream doc URLs.
+
 ## Key files
 
 - `flatpaks/<app>/manifest.yaml` — flatpak-builder path
