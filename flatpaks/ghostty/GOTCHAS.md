@@ -30,12 +30,24 @@ boot on GNOME Wayland.
 Both services are D-Bus-activated. Cold-start D-Bus activation has a ~10-second timeout
 window. Either service being cold is sufficient to trigger the symptom.
 
-**Fix:** `ghostty-wrapper.sh` is installed as the Flatpak `command`. It calls
-`StartServiceByName` for both services **synchronously** before exec-ing ghostty.
-When a service is already running the call returns in <10 ms. When cold it blocks for
-the activation duration (usually <3 s), then ghostty starts with both services ready.
-Total visible delay is bounded by the slower of the two activations, not by any
-timeout ghostty encounters internally.
+**Fix:** `ghostty-wrapper.sh` is installed as the Flatpak `command`. It makes
+**real method calls** to each service before exec-ing ghostty — not just
+`StartServiceByName`.  The distinction matters:
+
+- `StartServiceByName` returns as soon as the service claims its D-Bus name.
+  xdg-desktop-portal claims its name quickly but then loads backends
+  asynchronously.  If both `xdg-desktop-portal-gnome` and
+  `xdg-desktop-portal-gtk` are installed (common on Fedora/RHEL), backend
+  arbitration can take several more seconds after the name is claimed.
+
+- A real method call blocks until the service is **fully ready** to respond.
+
+Method calls used:
+- `org.freedesktop.portal.Settings.ReadAll ['org.freedesktop.appearance']`
+  — forces xdg-desktop-portal to finish loading all backends; also pre-fetches
+  appearance settings ghostty reads on startup.
+- `org.freedesktop.Flatpak.SessionHelper.RequestSession`
+  — proves flatpak-session-helper is ready for `FlatpakHostCommand` calls.
 
 **Diagnosis (if the delay recurs or changes in character):**
 ```bash
@@ -45,16 +57,17 @@ gdbus call --session --dest org.freedesktop.DBus \
   --method org.freedesktop.DBus.ListNames 2>/dev/null | tr ',' '\n' \
   | grep -E 'flatpak|portal'
 
-# 2. Time the two pre-warms independently (run after a reboot, before ghostty)
-time gdbus call --session --dest org.freedesktop.DBus \
-  --object-path /org/freedesktop/DBus \
-  --method org.freedesktop.DBus.StartServiceByName \
-  org.freedesktop.portal.Desktop 0
+# 2. Time the wrapper's readiness probes directly (run after a reboot, before ghostty)
+time gdbus call --session --timeout 15 \
+  --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.Settings.ReadAll \
+  "['org.freedesktop.appearance']"
 
-time gdbus call --session --dest org.freedesktop.DBus \
-  --object-path /org/freedesktop/DBus \
-  --method org.freedesktop.DBus.StartServiceByName \
-  org.freedesktop.Flatpak 0
+time gdbus call --session --timeout 15 \
+  --dest org.freedesktop.Flatpak \
+  --object-path /org/freedesktop/Flatpak/SessionHelper \
+  --method org.freedesktop.Flatpak.SessionHelper.RequestSession
 
 # 3. Check user journal for portal/helper activation errors
 journalctl --user -xe | grep -E 'portal|flatpak' | tail -30
@@ -65,10 +78,10 @@ GSK_RENDERER=cairo flatpak run --user com.mitchellh.ghostty
 ```
 
 **If the delay persists after the wrapper fix:**
-The delay may be caused by xdg-desktop-portal itself timing out while loading backends
-(e.g. if both `xdg-desktop-portal-gnome` and `xdg-desktop-portal-gtk` are installed and
-one conflicts with the other). This is a host-level issue, not fixable in the manifest.
-Check `journalctl --user -xe` for portal timeout messages around the launch time.
+Check `journalctl --user -xe` for portal errors around launch time.  The wrapper
+uses `--timeout 15` and `|| true` so a failing probe is skipped rather than
+hanging indefinitely — but a failing portal suggests a deeper system issue
+(e.g. conflicting portal implementations) that needs to be resolved on the host.
 
 ## Aggressive cleanup globs
 
