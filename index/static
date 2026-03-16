@@ -25,7 +25,7 @@
       "Name": "projectbluefin/testhub/thunderbird-nightly",
       "Images": [
         {
-          "Digest": "sha256:463f4cbae08586a03c5389b813ddb29e16aec26ac51b4d45f73fd8c6e95cc50d",
+          "Digest": "sha256:4865aa877c41c0b0626685cfdeb637bb96422ddd3b6b2ea7b80643dcc71bbe54",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
@@ -35,8 +35,8 @@
           "Labels": {
             "org.flatpak.ref": "app/org.mozilla.thunderbird.nightly/x86_64/nightly",
             "org.flatpak.metadata": "[Application]\nname=org.mozilla.thunderbird.nightly\nruntime=org.freedesktop.Platform/x86_64/24.08\nsdk=org.freedesktop.Sdk/x86_64/24.08\ncommand=thunderbird\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;\ndevices=dri;\nfilesystems=xdg-download;xdg-run/speech-dispatcher:ro;\npersistent=.thunderbird-nightly;\n\n[Session Bus Policy]\norg.freedesktop.Notifications=talk\norg.mozilla.thunderbird.nightly.*=own\norg.gtk.vfs.*=talk\norg.freedesktop.secrets=talk\norg.a11y.Bus=talk\norg.freedesktop.FileManager1=talk\n\n[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n\n[Environment]\nDICPATH=/usr/share/hunspell\n\n[Extension org.freedesktop.Platform.ffmpeg-full]\ndirectory=lib/ffmpeg\nadd-ld-path=.\nversion=24.08\n\n[Extension org.mozilla.thunderbird.nightly.Locale]\ndirectory=share/runtime/langpack\nno-autodownload=true\nsubdirectories=true\nversion=nightly\n\n[Extension org.mozilla.thunderbird.nightly.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=org.mozilla.thunderbird.nightly.Debug;",
-            "org.flatpak.installed-size": "326556160",
-            "org.flatpak.download-size": "118021004"
+            "org.flatpak.installed-size": "326571008",
+            "org.flatpak.download-size": "118022896"
           }
         }
       ]
@@ -120,7 +120,7 @@
       "Name": "projectbluefin/testhub/firefox-nightly",
       "Images": [
         {
-          "Digest": "sha256:ca08cb0c1d48e7d9fabeca9b0f9176f6e00182cdd3441fc063b63ba3d281e7c0",
+          "Digest": "sha256:5122ef91f58816f14875f8982ca15196531f0e7d19fb282e61304b5b7332312f",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "arm64",
@@ -130,12 +130,12 @@
           "Labels": {
             "org.flatpak.ref": "app/org.mozilla.firefox.nightly/aarch64/nightly",
             "org.flatpak.metadata": "[Application]\nname=org.mozilla.firefox.nightly\nruntime=org.freedesktop.Platform/aarch64/24.08\nsdk=org.freedesktop.Sdk/aarch64/24.08\nbase=app/org.mozilla.firefox.BaseApp/aarch64/24.08\ncommand=firefox\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;\ndevices=all;\nfeatures=devel;\nfilesystems=xdg-config/gtk-3.0:ro;xdg-download;/run/.heim_org.h5l.kcm-socket;xdg-run/speech-dispatcher:ro;\npersistent=.mozilla;\n\n[Session Bus Policy]\norg.mozilla.firefox_beta.*=own\norg.mozilla.firefox.*=own\norg.mpris.MediaPlayer2.firefox.*=talk\norg.gtk.vfs.*=talk\norg.a11y.Bus=talk\norg.freedesktop.FileManager1=talk\n\n[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n\n[Environment]\nDICPATH=/usr/share/hunspell\n\n[Extension org.freedesktop.Platform.ffmpeg-full]\ndirectory=lib/ffmpeg\nadd-ld-path=.\nversion=24.08\n\n[Extension org.mozilla.firefox.Locale]\ndirectory=share/runtime/langpack\nno-autodownload=true\nsubdirectories=true\nversion=nightly\n\n[Extension org.mozilla.firefox.systemconfig]\ndirectory=etc/firefox\nno-autodownload=true\nversion=nightly\n\n[Extension org.mozilla.firefox.nightly.Locale]\ndirectory=share/runtime/locale\nautodelete=true\nlocale-subset=true\n\n[Extension org.mozilla.firefox.nightly.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=org.mozilla.firefox.nightly.Locale;org.mozilla.firefox.nightly.Debug;",
-            "org.flatpak.installed-size": "297607168",
-            "org.flatpak.download-size": "111244672"
+            "org.flatpak.installed-size": "297586688",
+            "org.flatpak.download-size": "111224310"
           }
         },
         {
-          "Digest": "sha256:1ead5fe8e83bb3c8210fcce2a0af430c73fd41bde8143a0ef981a390a3189694",
+          "Digest": "sha256:fda1cb6250aed345f16da2624401f6eb7ffb5ad511cfaed1e335c6f98ba882e1",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
@@ -145,8 +145,8 @@
           "Labels": {
             "org.flatpak.ref": "app/org.mozilla.firefox.nightly/x86_64/nightly",
             "org.flatpak.metadata": "[Application]\nname=org.mozilla.firefox.nightly\nruntime=org.freedesktop.Platform/x86_64/24.08\nsdk=org.freedesktop.Sdk/x86_64/24.08\nbase=app/org.mozilla.firefox.BaseApp/x86_64/24.08\ncommand=firefox\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;\ndevices=all;\nfeatures=devel;\nfilesystems=xdg-config/gtk-3.0:ro;xdg-download;/run/.heim_org.h5l.kcm-socket;xdg-run/speech-dispatcher:ro;\npersistent=.mozilla;\n\n[Session Bus Policy]\norg.mozilla.firefox_beta.*=own\norg.mozilla.firefox.*=own\norg.mpris.MediaPlayer2.firefox.*=talk\norg.gtk.vfs.*=talk\norg.a11y.Bus=talk\norg.freedesktop.FileManager1=talk\n\n[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n\n[Environment]\nDICPATH=/usr/share/hunspell\n\n[Extension org.freedesktop.Platform.ffmpeg-full]\ndirectory=lib/ffmpeg\nadd-ld-path=.\nversion=24.08\n\n[Extension org.mozilla.firefox.Locale]\ndirectory=share/runtime/langpack\nno-autodownload=true\nsubdirectories=true\nversion=nightly\n\n[Extension org.mozilla.firefox.systemconfig]\ndirectory=etc/firefox\nno-autodownload=true\nversion=nightly\n\n[Extension org.mozilla.firefox.nightly.Locale]\ndirectory=share/runtime/locale\nautodelete=true\nlocale-subset=true\n\n[Extension org.mozilla.firefox.nightly.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=org.mozilla.firefox.nightly.Locale;org.mozilla.firefox.nightly.Debug;",
-            "org.flatpak.installed-size": "326826496",
-            "org.flatpak.download-size": "123190132"
+            "org.flatpak.installed-size": "326703104",
+            "org.flatpak.download-size": "123139461"
           }
         }
       ]
