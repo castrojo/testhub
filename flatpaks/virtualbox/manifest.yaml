@@ -9,6 +9,8 @@ x-arches:
   - x86_64
 x-chunkah-max-layers: "24"
 x-skip-launch-check: true
+x-version: "7.2.4"
+default-branch: stable
 x-container-image: "ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10"
 
 finish-args:

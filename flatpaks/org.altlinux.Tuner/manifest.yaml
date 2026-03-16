@@ -3,6 +3,7 @@ app-id: org.altlinux.Tuner
 runtime: org.gnome.Platform
 runtime-version: '49'
 sdk: org.gnome.Sdk
+default-branch: stable
 command: tuner
 add-extensions:
   org.altlinux.Tuner.Plugin:

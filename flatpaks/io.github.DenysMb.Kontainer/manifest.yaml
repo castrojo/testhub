@@ -24,6 +24,7 @@ modules:
     commit: bac90f1aa49a1fb465e445da156686964f4a7882
 app-id: io.github.DenysMb.Kontainer
 x-version: '1.4.1'
+default-branch: stable
 x-arches:
 - x86_64
 x-skip-chunkah: true
