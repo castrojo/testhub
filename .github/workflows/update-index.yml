@@ -118,7 +118,7 @@ jobs:
           name: e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
           path: /tmp/e2e-passed-marker
           if-no-files-found: warn
-          retention-days: 1
+          retention-days: 90
 
       - name: Uninstall on failure
         if: always()

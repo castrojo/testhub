@@ -47,3 +47,20 @@ https://github.com/ghostty-org/ghostty/archive/tip.tar.gz
 
 Never use rolling `tip`, `latest`, or branch archive URLs. Find the exact tag URL and
 update sha256 in the same commit.
+
+### Exception: Mozilla nightly apps (intentional rolling URLs)
+
+`firefox-nightly` and `thunderbird-nightly` are an intentional exception to the rule above.
+They use Mozilla's rolling `latest-mozilla-central` and `latest-comm-central` CDN paths
+because Mozilla does not publish versioned archives for nightly builds — only the single
+"latest" tarball is available.
+
+Consequences:
+- **aarch64 sha256 is stale by design** for firefox-nightly. Do not attempt to permanently
+  pin it; the ETag-based update workflow refreshes it when Mozilla rebuilds.
+- **x-version stays fixed** (`150.0a1`) — Mozilla never increments the nightly version
+  string; each daily rebuild is a new binary at the same URL.
+- The ETag-based `update-mozilla-nightly.yml` workflow handles SHA256 refresh; it opens
+  a PR on `chore/nightly-sha256-YYYYMMDD` when Mozilla rebuilds.
+
+Never "fix" these apps to use pinned versioned URLs — no such URLs exist.

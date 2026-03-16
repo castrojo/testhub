@@ -87,6 +87,17 @@ the variable is exported.
 `--max-layers` defaults to `16` in this repo (configurable per-app via
 `chunkah-max-layers` in `release.yaml` or `x-chunkah-max-layers` in `manifest.yaml`).
 Upstream default is 64; we cap lower for Flatpak use (fewer is fine, more = better dedup).
+Maximum supported by chunkah is 448.
+
+**Additional upstream flags** (available but not currently used in this repo):
+- `--annotation key=value` — set OCI annotation on the output image
+- `--label key=value` — set OCI label on the output image (use `_apply-oci-labels` instead for label management)
+- `--prune /path` — strip paths from the rootfs before rechunking (useful for OSTree `/sysroot/` cleanup)
+- `RUST_LOG=chunkah=debug` — enable debug logging for chunkah internals
+
+**buildah requirement** (when using buildah's `RUN --mount=from=` syntax instead of podman):
+- Must pass `--skip-unused-stages=false` to buildah, otherwise it may skip the chunkah stage.
+- This repo uses the `--mount=type=image` podman pattern, not buildah — this flag does not apply here.
 
 **Before modifying any chunkah invocation:** fetch upstream README and verify the pattern
 matches the pinned version. Do not rely on memory of prior usage patterns.
@@ -485,6 +496,8 @@ Simultaneous pushes create concurrent runs that fight for the same runners and w
 6. **Concurrency group awareness.** `build.yml` has a `concurrency` group per app — a new push for the same app cancels an in-progress run. This is intentional for feature branches but undesirable for `main`. Avoid pushing rapidly in succession on main.
 
 7. **Always use `actions/cache`.** Any workflow that downloads large files, computes hashes, or repeats expensive operations should cache intermediate results. Use ETags or content hashes as cache keys so the cache is only busted when upstream actually changes. Prefer `actions/cache/restore` + `actions/cache/save` (split) over the combined `actions/cache` so you can save even on failure (`if: always()`). Example pattern used in `update-mozilla-nightly.yml`: cache ETag files with key `<prefix>-${{ github.run_id }}` and `restore-keys: <prefix>-` so each run saves fresh ETags while always restoring the most recent prior run's values.
+
+8. **Set `retention-days: 90` on all `upload-artifact` steps.** All artifact uploads in this repo use `retention-days: 90`. This applies to OCI image artifacts, digest files, staging-tag files, e2e marker files, and SARIF results. Never use 1 or 5 days — the longer window enables debugging of historical runs and re-running failed jobs without losing the prior build's artifacts.
 
 **Quick check command:**
 ```bash

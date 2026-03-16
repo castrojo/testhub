@@ -223,7 +223,7 @@ jobs:
         with:
           name: oci-${{ matrix.app }}-${{ matrix.arch }}
           path: ${{ matrix.app }}.oci/
-          retention-days: 1
+          retention-days: 90
 
       - name: File issue on build failure
         if: failure() && steps.detect-path.outputs.skip != 'true'
@@ -617,7 +617,7 @@ jobs:
         with:
           name: digest-${{ matrix.app }}-${{ matrix.arch }}
           path: /tmp/digest.txt
-          retention-days: 1
+          retention-days: 90
 
       - name: Upload staging tag artifact
         if: steps.arch-check.outputs.skip != 'true'
@@ -625,7 +625,7 @@ jobs:
         with:
           name: staging-tag-${{ matrix.app }}-${{ matrix.arch }}
           path: /tmp/staging-tag.txt
-          retention-days: 1
+          retention-days: 90
 
   # ── Merge per-arch digests into a single OCI image index ─────────────────
   publish-manifest-list:
