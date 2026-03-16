@@ -26,7 +26,7 @@ Renovate manages dependency pins in this repo via the self-hosted runner at
 |---|---|---|
 | `github-actions` manager | built-in | `.github/workflows/**` |
 | `release.yaml` version+url+sha256 | `github-releases` | `flatpaks/**/release.yaml` |
-| `manifest.yaml` x-version+url+sha256 | `github-releases` | `flatpaks/**/manifest.yaml` |
+| `manifest.yaml` x-version+url+sha256 | `github-tags` | `flatpaks/**/manifest.yaml` |
 | `quay.io/jlebon/chunkah` image tag | `docker` | `Justfile`, `build.yml` |
 | `yq` version | `github-releases` (mikefarah/yq) | `Justfile` |
 | `oras` version | `github-releases` (oras-project/oras) | `Justfile` |
@@ -46,7 +46,26 @@ Renovate manages dependency pins in this repo via the self-hosted runner at
 - `virtualbox` — uses `x-checker-data` (flathub tooling), not regex
 - `org.altlinux.Tuner` / `io.github.DenysMb.Kontainer` — git tags at non-GitHub forges
 
-## Known limitations
+## Why manifest.yaml uses `github-tags` not `github-releases`
+
+**ghostty does not publish GitHub Release objects.** Their releases API returns only a
+pre-release stub called `tip` from 2022. All versioned releases (`v1.3.0`, `v1.3.1`, …)
+exist only as git tags.
+
+Using `github-releases` datasource → Renovate finds nothing → no update PRs for ghostty.
+
+**Rule:** the manifest.yaml custom manager must use `datasourceTemplate: github-tags`.
+This is safe for all other `manifest.yaml` apps (Kontainer, rancher-desktop) because
+their git tags align with their releases — `github-tags` picks them up either way.
+
+**Do NOT change this back to `github-releases`** without first verifying that ghostty has
+started publishing formal GitHub Releases. Check:
+```bash
+curl -s "https://api.github.com/repos/ghostty-org/ghostty/releases?per_page=5" | jq '.[].tag_name'
+# If this only returns "tip", ghostty still uses tags-only — keep github-tags.
+```
+
+
 
 ### sha256 not computed for github-releases artifacts
 

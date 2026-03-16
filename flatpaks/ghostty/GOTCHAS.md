@@ -1,5 +1,19 @@
 # Ghostty — Known Issues
 
+## Release model: git tags only (no GitHub Releases)
+
+Ghostty does **not** publish GitHub Release objects. The only entry in their releases API
+is a pre-release called `tip` from 2022. All versioned releases (`v1.3.0`, `v1.3.1`, …)
+exist only as git tags.
+
+**Impact on Renovate:** The `github-releases` datasource queries the releases API and
+finds nothing useful. The manifest.yaml custom manager must use `datasourceTemplate:
+github-tags` or Renovate will never open a ghostty update PR.
+
+**Check before assuming Renovate is broken:** if no ghostty update PR exists, confirm
+that `renovate.json` uses `github-tags` for the manifest.yaml manager. Do NOT switch
+back to `github-releases` — it will silently stop tracking ghostty.
+
 ## Sandbox escape (intentional)
 
 `--talk-name=org.freedesktop.Flatpak` grants a full sandbox escape so the terminal emulator
