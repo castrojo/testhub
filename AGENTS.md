@@ -81,19 +81,36 @@ This applies to all install operations: manual testing, validation steps, CI val
 | Add a new app, change finish-args, hit a build quirk | `skills/app-gotchas.md` |
 | Touch Renovate config or understand why a dep isn't auto-updated | `skills/renovate.md` |
 
-## Skill improvement — mandatory
+## Self-learning feedback loop — primary methodology
+
+**Load the operating model at session start:**
+```
+cat ~/src/skills/cicd-learning/SKILL.md
+```
+
+**Read the Copilot Space first:**
+```
+github-mcp-server-get_copilot_space(owner: "projectbluefin", name: "bluefin")
+```
 
 Skills are the single source of truth for this repo's institutional knowledge.
-**Any of these events requires an immediate skill update before moving on:**
+The feedback loop is non-negotiable: every task ends with skills more complete than before.
+
+**Update the skill the moment you discover something** — before writing the fix, before
+moving on. Dispatch a background agent if needed so main-session work continues.
+
+**The next-agent test:** before closing any task — *"Would the next agent reading these
+skills and the Copilot Space avoid this exact problem?"* If no → skill is still incomplete.
+
+**Mandatory triggers — update before moving on:**
 
 - A CI step fails unexpectedly and the root cause is not already documented
 - A pipeline behavior is discovered that isn't in the relevant skill
 - Any fix takes more than one attempt to get right
 - A lint error, build error, or tool quirk is found that could recur
+- An assumption in a skill is proven wrong
 
-**How to update:** edit the relevant `skills/*.md` file, commit with `docs(skills): ...`,
-then record the finding in the workflow-state journal:
-`journal_write(title: "...", body: "...", tags: "ci-cd")`
+**How to update:** edit the relevant `skills/*.md` file, commit with `docs(skills): ...`
 
 ## Architecture reference
 
