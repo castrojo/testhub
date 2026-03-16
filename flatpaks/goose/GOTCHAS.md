@@ -33,7 +33,7 @@ validates the Flatpak can be installed; the launch check adds no signal here.
 
 
 
-16 layers configured (`chunkah-max-layers: "16"`). At ~200MB the OSTree object store
+32 layers configured (`chunkah-max-layers: "32"`). At ~200MB the OSTree object store
 heuristics alone may produce ~30 layers. If chunkah warns about exceeding the layer budget,
 increase `chunkah-max-layers` or enable xattr-based component hints once the repo has 3+
 packages.

@@ -19,8 +19,8 @@ Per-app known issues and workarounds. Each app has a dedicated `GOTCHAS.md` in i
 | goose | `flatpaks/goose/GOTCHAS.md` | bundle-repack (no metainfo inject), x86_64 only, missing `<categories>` (Flathub-only violation) |
 | io.github.DenysMb.Kontainer | (inline in `app-gotchas.md`) | `appstream-external-screenshot-url` + `appstream-screenshots-not-mirrored-in-ostree` — screenshots not mirrored to Flathub CDN; permanent exception (both stages) |
 | lmstudio | `flatpaks/lmstudio/GOTCHAS.md` | icon omitted (resize unsolved), `--filesystem=home` intentional, x86_64 only, manual Renovate required |
-| firefox-nightly | `flatpaks/firefox-nightly/GOTCHAS.md` | app-id is `org.mozilla.firefox.nightly` (renamed from `org.mozilla.firefox` to avoid Flathub clash), rolling aarch64 sha256, BaseApp required pre-install, `.appdata.xml` skips CI validation |
-| thunderbird-nightly | `flatpaks/thunderbird-nightly/GOTCHAS.md` | x86_64 only (no aarch64), comm-central icon pinning — verify each size sha256 independently (swap of 32/64 was a bug), `--persist=.thunderbird-nightly` profile isolation, no BaseApp pre-install needed, extension stubs created in build-commands (not cleanup-commands), permanent lint exceptions: `metainfo-missing-screenshots` + `appstream-missing-developer-name` (builddir) + `appstream-screenshots-not-mirrored-in-ostree` (repo) |
+| firefox-nightly | `flatpaks/firefox-nightly/GOTCHAS.md` | app-id is `org.mozilla.firefox.nightly` (renamed from `org.mozilla.firefox` to avoid Flathub clash), rolling aarch64 sha256, BaseApp required pre-install, `.appdata.xml` skips CI validation, **uses `freedesktop-24.08` container (not gnome-49)** |
+| thunderbird-nightly | `flatpaks/thunderbird-nightly/GOTCHAS.md` | x86_64 only (no aarch64), comm-central icon pinning — verify each size sha256 independently (swap of 32/64 was a bug), `--persist=.thunderbird-nightly` profile isolation, no BaseApp pre-install needed, extension stubs created in build-commands (not cleanup-commands), permanent lint exceptions: `metainfo-missing-screenshots` + `appstream-missing-developer-name` (builddir) + `appstream-screenshots-not-mirrored-in-ostree` (repo), **uses `freedesktop-24.08` container (not gnome-49)** |
 | virtualbox | `flatpaks/virtualbox/GOTCHAS.md` | KVM backend (no vboxdrv kernel module), X11 only (VBoxSVGA Wayland bug), hardening disabled, gsoap serial build, shared-modules SDL1+GLU inlined, permanent lint exceptions: `appstream-external-screenshot-url` (builddir) + `appstream-screenshots-not-mirrored-in-ostree` (repo) — screenshots hosted at external URLs |
 | org.altlinux.Tuner | (inline in `app-gotchas.md`) | `libpeas` 2.x requires `-Dgjs=false` on GNOME Platform 49 (mozjs-128 not available) |
 | rancher-desktop | (inline in `app-gotchas.md`) | x86_64 only, Electron, upstream icon 2134×2134 (pre-resize required), `--no-sandbox` wrapper, `--device=all` for KVM |
@@ -72,9 +72,45 @@ Applies to: `scripts/sync-runtime-issues.py` and any task spec describing issue 
   - `appstream-screenshots-not-mirrored-in-ostree` fires at the `repo` lint stage
   Both must be present; omitting either causes the x86_64 build to fail.
 
-## gnome-49 container: dbus setup required for e2e-install
+## Auto-imported apps: inline-only gotchas (no per-app GOTCHAS.md)
 
-The `e2e-install` job runs in `ghcr.io/flathub-infra/flatpak-github-actions:gnome-49`.
+`io.github.DenysMb.Kontainer`, `org.altlinux.Tuner`, and `rancher-desktop` are
+auto-imported from flatpak-tracker. They do not have dedicated `flatpaks/<app>/GOTCHAS.md`
+files — their issues are documented inline in this central skill only. This is intentional.
+Do not create per-app GOTCHAS.md files for these apps unless they are being significantly
+extended or hand-crafted.
+
+## Mozilla nightly apps: use freedesktop-24.08 container, not gnome-49
+
+`firefox-nightly` and `thunderbird-nightly` both use `org.freedesktop.Platform//24.08`
+(not `org.gnome.Platform`). Their manifests set `x-container-image` to
+`ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08`.
+
+**Impact:** the standard manual validation flow in `pipeline.md` uses the gnome-49 container.
+For these two apps, substitute `freedesktop-24.08` everywhere gnome-49 is mentioned:
+
+```bash
+podman run --rm -it --privileged \
+  -v ~/src/testhub:/workspace:z -w /workspace \
+  ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08 bash
+```
+
+Firefox additionally requires `org.mozilla.firefox.BaseApp//24.08` pre-installed; see
+`flatpaks/firefox-nightly/GOTCHAS.md`. Thunderbird does **not** require a BaseApp.
+
+## firefox-nightly: non-standard lint exceptions
+
+In addition to the standard non-Flathub exceptions, `exceptions.json` suppresses entries
+that are unusual and need context if you ever audit the file:
+
+| Exception | Reason |
+|---|---|
+| `finish-args-own-name-wildcard-org.mozilla.firefox` | Firefox acquires wildcard D-Bus names for multi-profile support — intentional, not a mistake |
+| `finish-args-own-name-wildcard-org.mozilla.firefox_beta` | Same — beta name variant also acquired at runtime |
+| `manifest-unknown-properties` | Upstream Firefox manifest uses properties outside the flatpak-builder JSON schema |
+| `finish-args-unnecessary-xdg-config-gtk-3.0-ro-access` | Firefox reads GTK3 config; linter flags as unnecessary but it is required for theme integration |
+
+## gnome-49 container: dbus setup required for e2e-install
 This container is missing the `messagebus` system user and has no `useradd`/`adduser`.
 `flatpak install` requires a running dbus session bus or it will fail.
 
