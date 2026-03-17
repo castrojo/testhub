@@ -6,7 +6,8 @@ default-branch: stable
 x-version: "1.22.0"
 # x-arches: upstream only ships x86_64 Linux zip; no arm64 available
 x-arches: [x86_64]
-x-skip-launch-check: true  # Electron GUI — exits 1 without display in CI
+x-skip-launch-check: true   # Electron GUI — exits 1 without display in CI
+x-skip-install-test: true  # Bootstrap: app not yet in testhub index; remove after first successful index commit
 command: rancher-desktop
 finish-args:
   # Windowing (X11 only; Electron does not fully support Wayland yet)

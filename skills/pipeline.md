@@ -177,6 +177,31 @@ until CI passes end-to-end:
 Never close a "new app" issue based solely on files being committed. The Flatpak
 must be buildable and installable before the issue is closed.
 
+### First-time onboarding bootstrap (chicken-and-egg)
+
+The `e2e-install` job installs the app from the **live gh-pages index**. For a brand-new
+app that has never been published, the index has no entry yet — `e2e-install` will fail
+with `"Nothing matches <app-id> in remote testhub"`.
+
+`commit-index` requires a successful e2e-passed marker to add the app to the index. This
+creates a chicken-and-egg: the app can't be installed until it's indexed, but it can't be
+indexed until the install succeeds.
+
+**Bootstrap procedure (two-run approach):**
+
+1. Add `x-skip-install-test: true` to the manifest:
+   ```yaml
+   x-skip-install-test: true  # Bootstrap: app not in index yet; remove after first successful index commit
+   ```
+2. Commit, push, and trigger a build. The e2e step will skip (exit 0), the e2e-passed
+   marker will be uploaded, and `commit-index` will add the app to the gh-pages index.
+3. Once the first build succeeds and the index is updated, **remove** the flag.
+4. Trigger a second build. This time `e2e-install` will do a real `flatpak install` and
+   the full pipeline completes successfully.
+
+Only use `x-skip-install-test: true` as a permanent flag if the app genuinely cannot be
+installed in CI (e.g., requires hardware or root that the runner doesn't have).
+
 ## Runtime-update PRs
 
 When a runtime-update PR is created (e.g. by raptor[bot] or Copilot), the manifest
