@@ -613,12 +613,18 @@ jobs:
 
       - name: Upload digest artifact
         if: steps.arch-check.outputs.skip != 'true'
-        run: cp /tmp/digest.txt /tmp/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
+        run: |
+          # Include both digest.txt (for publish-manifest-list which reads <arch>/digest.txt)
+          # and digest-<app>-<arch>.txt (for update-index which uses merge-multiple: true and
+          # needs a self-identifying filename since a single artifact lands flat in /tmp/digests/).
+          mkdir -p /tmp/digest-artifact
+          cp /tmp/digest.txt /tmp/digest-artifact/digest.txt
+          cp /tmp/digest.txt /tmp/digest-artifact/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         if: steps.arch-check.outputs.skip != 'true'
         with:
           name: digest-${{ matrix.app }}-${{ matrix.arch }}
-          path: /tmp/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
+          path: /tmp/digest-artifact/
           retention-days: 90
 
       - name: Upload staging tag artifact
