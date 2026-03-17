@@ -44,6 +44,7 @@ flatpak remote-add --user --if-not-exists testhub oci+https://projectbluefin.git
 | Firefox Nightly | Firefox Nightly browser | `flatpak install --user testhub org.mozilla.firefox.nightly` |
 | Thunderbird Nightly | Thunderbird Nightly email client | `flatpak install --user testhub org.mozilla.thunderbird.nightly` |
 | VirtualBox | Oracle VirtualBox | `flatpak install --user testhub org.virtualbox.VirtualBox` |
+| Rancher Desktop | Kubernetes/container manager | `flatpak install --user testhub io.rancherdesktop.RancherDesktop` |
 | Kontainer | Flatpak container manager (KDE) | `flatpak install --user testhub io.github.DenysMb.Kontainer` |
 | Tuner | Internet radio player (GNOME) | `flatpak install --user testhub org.altlinux.Tuner` |
 
@@ -72,6 +73,10 @@ flatpak install --user testhub org.mozilla.thunderbird.nightly
 
 ```bash
 flatpak install --user testhub org.virtualbox.VirtualBox
+```
+
+```bash
+flatpak install --user testhub io.rancherdesktop.RancherDesktop
 ```
 
 ```bash
