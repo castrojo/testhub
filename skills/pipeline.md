@@ -524,6 +524,28 @@ Simultaneous pushes create concurrent runs that fight for the same runners and w
 
 8. **Set `retention-days: 90` on all `upload-artifact` steps.** All artifact uploads in this repo use `retention-days: 90`. This applies to OCI image artifacts, digest files, staging-tag files, e2e marker files, and SARIF results. Never use 1 or 5 days — the longer window enables debugging of historical runs and re-running failed jobs without losing the prior build's artifacts.
 
+9. **`download-artifact` v8 single-artifact flat layout.** When `pattern:` matches **one** artifact, v8 extracts files directly into the base `path:` (flat). When it matches **multiple** artifacts, each gets a subdirectory `<path>/<artifact-name>/`. This affects any x86_64-only app (rancher-desktop, lmstudio, firefox-nightly, thunderbird-nightly, goose) where only one digest artifact exists.
+
+   **The fix used in this repo**: each `sign-and-push` job uploads a directory containing **both**:
+   - `digest.txt` — for `publish-manifest-list` which reads `<arch>/digest.txt` via `gh run download --dir`
+   - `digest-<app>-<arch>.txt` — self-identifying filename for `update-index.yml` which uses `merge-multiple: true` and a `digest-*.txt` file glob
+
+   ```yaml
+   # build.yml — correct upload pattern
+   - name: Upload digest artifact
+     run: |
+       mkdir -p /tmp/digest-artifact
+       cp /tmp/digest.txt /tmp/digest-artifact/digest.txt
+       cp /tmp/digest.txt /tmp/digest-artifact/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
+   - uses: actions/upload-artifact@...
+     with:
+       name: digest-${{ matrix.app }}-${{ matrix.arch }}
+       path: /tmp/digest-artifact/
+       retention-days: 90
+   ```
+
+   **Do not** upload only `digest.txt` or only the self-identifying file — both consumers need their respective filename.
+
 **Quick check command:**
 ```bash
 gh run list --repo projectbluefin/testhub --workflow=build.yml --limit 5 \
