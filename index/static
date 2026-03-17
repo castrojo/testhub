@@ -190,6 +190,26 @@
           }
         }
       ]
+    },
+    {
+      "Name": "projectbluefin/testhub/rancher-desktop",
+      "Images": [
+        {
+          "Digest": "sha256:bc0e0aed9e145082376aaed52367e75089be43f9c72fe8ae92799a2e7930c907",
+          "MediaType": "application/vnd.oci.image.manifest.v1+json",
+          "OS": "linux",
+          "Architecture": "amd64",
+          "Tags": [
+            "latest"
+          ],
+          "Labels": {
+            "org.flatpak.ref": "app/io.rancherdesktop.RancherDesktop/x86_64/stable",
+            "org.flatpak.metadata": "[Application]\nname=io.rancherdesktop.RancherDesktop\nruntime=org.gnome.Platform/x86_64/49\nsdk=org.gnome.Sdk/x86_64/49\ncommand=rancher-desktop\n\n[Context]\nshared=network;ipc;\nsockets=x11;\ndevices=dri;all;\nfilesystems=home;host-os:ro;xdg-run/podman:create;/run/docker.sock;xdg-run/containers:create;\n\n[Session Bus Policy]\norg.kde.StatusNotifierWatcher=talk\norg.freedesktop.Notifications=talk\norg.freedesktop.Flatpak=talk\n\n[Environment]\nXDG_SESSION_TYPE=x11\nXCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons\n\n[Extension io.rancherdesktop.RancherDesktop.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=io.rancherdesktop.RancherDesktop.Debug;",
+            "org.flatpak.installed-size": "1422747136",
+            "org.flatpak.download-size": "649988543"
+          }
+        }
+      ]
     }
   ]
 }
