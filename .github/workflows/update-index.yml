@@ -48,20 +48,23 @@ jobs:
         with:
           pattern: digest-*
           path: /tmp/digests
+          merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build app+arch matrix from digest artifacts
         id: matrix
         run: |
-          # Derive matrix from digest artifact dirs: digest-<app>-<arch>
-          # Each artifact contains one arch of one app — one run-test invocation each.
+          # Derive matrix from digest artifact files: digest-<app>-<arch>.txt
+          # merge-multiple: true merges all matching artifacts into /tmp/digests/
+          # so each file is digest-<app>-<arch>.txt at the root of /tmp/digests/.
           MATRIX=$(
             shopt -s nullglob
             entries=()
-            for d in /tmp/digests/digest-*/; do
-              dir=$(basename "$d")
-              rest="${dir#digest-}"
+            for f in /tmp/digests/digest-*.txt; do
+              filename=$(basename "$f")
+              name="${filename%.txt}"
+              rest="${name#digest-}"
               arch="${rest##*-}"
               app="${rest%-${arch}}"
               entries+=("{\"app\":\"${app}\",\"arch\":\"${arch}\"}")
@@ -110,13 +113,13 @@ jobs:
       - name: Run install test
         run: |
           just run-test '${{ matrix.app }}' '${{ matrix.arch }}'
-          touch /tmp/e2e-passed-marker
+          touch /tmp/e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
 
       - name: Upload e2e-passed artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
-          path: /tmp/e2e-passed-marker
+          path: /tmp/e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
           if-no-files-found: warn
           retention-days: 90
 
@@ -160,6 +163,7 @@ jobs:
         with:
           pattern: digest-*
           path: /tmp/digests
+          merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -168,6 +172,7 @@ jobs:
         with:
           pattern: e2e-passed-*
           path: /tmp/e2e-passed
+          merge-multiple: true
         continue-on-error: true
 
       - name: Login to ghcr.io for skopeo inspect
@@ -184,9 +189,10 @@ jobs:
         run: |
           cd pages
           shopt -s nullglob
-          for DIGEST_FILE in /tmp/digests/digest-*/digest.txt; do
-            DIR=$(basename "$(dirname "${DIGEST_FILE}")")
-            REST="${DIR#digest-}"
+          for DIGEST_FILE in /tmp/digests/digest-*.txt; do
+            filename=$(basename "${DIGEST_FILE}")
+            name="${filename%.txt}"
+            REST="${name#digest-}"
             ARCH="${REST##*-}"
             APP_ORIG="${REST%-${ARCH}}"
             APP="${APP_ORIG,,}"
@@ -194,9 +200,9 @@ jobs:
 
             # Per-app gate: only write entry if e2e-install passed for this app+arch.
             # Artifact names preserve original case (e.g. org.altlinux.Tuner);
-            # check both lowercased and original-case artifact dirs to be safe.
-            if [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP_ORIG}-${ARCH}" ]] && \
-               [[ ! -d "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
+            # check both lowercased and original-case marker files.
+            if [[ ! -f "/tmp/e2e-passed/e2e-passed-${APP_ORIG}-${ARCH}" ]] && \
+               [[ ! -f "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
               echo "==> SKIP index update: ${APP} ${ARCH} — e2e-install did not pass"
               continue
             fi

@@ -613,10 +613,12 @@ jobs:
 
       - name: Upload digest artifact
         if: steps.arch-check.outputs.skip != 'true'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        run: cp /tmp/digest.txt /tmp/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        if: steps.arch-check.outputs.skip != 'true'
         with:
           name: digest-${{ matrix.app }}-${{ matrix.arch }}
-          path: /tmp/digest.txt
+          path: /tmp/digest-${{ matrix.app }}-${{ matrix.arch }}.txt
           retention-days: 90
 
       - name: Upload staging tag artifact
