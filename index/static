@@ -120,7 +120,7 @@
       "Name": "projectbluefin/testhub/firefox-nightly",
       "Images": [
         {
-          "Digest": "sha256:57e2868f0fa47134f174f27693274fa7b460c174c8c29d62944296e462d625f5",
+          "Digest": "sha256:7c6b4d2348de6ffaf92769749004b87bcad699e8f6b4a3eee6e161cdbfd38f0e",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "arm64",
@@ -130,12 +130,12 @@
           "Labels": {
             "org.flatpak.ref": "app/org.mozilla.firefox.nightly/aarch64/nightly",
             "org.flatpak.metadata": "[Application]\nname=org.mozilla.firefox.nightly\nruntime=org.freedesktop.Platform/aarch64/24.08\nsdk=org.freedesktop.Sdk/aarch64/24.08\nbase=app/org.mozilla.firefox.BaseApp/aarch64/24.08\ncommand=firefox\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;\ndevices=all;\nfeatures=devel;\nfilesystems=xdg-config/gtk-3.0:ro;xdg-download;/run/.heim_org.h5l.kcm-socket;xdg-run/speech-dispatcher:ro;\npersistent=.mozilla;\n\n[Session Bus Policy]\norg.mozilla.firefox_beta.*=own\norg.mozilla.firefox.*=own\norg.mpris.MediaPlayer2.firefox.*=talk\norg.gtk.vfs.*=talk\norg.a11y.Bus=talk\norg.freedesktop.FileManager1=talk\n\n[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n\n[Environment]\nDICPATH=/usr/share/hunspell\n\n[Extension org.freedesktop.Platform.ffmpeg-full]\ndirectory=lib/ffmpeg\nadd-ld-path=.\nversion=24.08\n\n[Extension org.mozilla.firefox.Locale]\ndirectory=share/runtime/langpack\nno-autodownload=true\nsubdirectories=true\nversion=nightly\n\n[Extension org.mozilla.firefox.systemconfig]\ndirectory=etc/firefox\nno-autodownload=true\nversion=nightly\n\n[Extension org.mozilla.firefox.nightly.Locale]\ndirectory=share/runtime/locale\nautodelete=true\nlocale-subset=true\n\n[Extension org.mozilla.firefox.nightly.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=org.mozilla.firefox.nightly.Locale;org.mozilla.firefox.nightly.Debug;",
-            "org.flatpak.installed-size": "297587712",
-            "org.flatpak.download-size": "111217720"
+            "org.flatpak.installed-size": "297821184",
+            "org.flatpak.download-size": "111328387"
           }
         },
         {
-          "Digest": "sha256:ea291869496c725dba0d39fa00474726ff6b754326748d31719b079e573cc234",
+          "Digest": "sha256:badae609f62bd4422aa33854a4b67463969dc106e72dac89f5890612f8e54e42",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
@@ -145,8 +145,8 @@
           "Labels": {
             "org.flatpak.ref": "app/org.mozilla.firefox.nightly/x86_64/nightly",
             "org.flatpak.metadata": "[Application]\nname=org.mozilla.firefox.nightly\nruntime=org.freedesktop.Platform/x86_64/24.08\nsdk=org.freedesktop.Sdk/x86_64/24.08\nbase=app/org.mozilla.firefox.BaseApp/x86_64/24.08\ncommand=firefox\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;\ndevices=all;\nfeatures=devel;\nfilesystems=xdg-config/gtk-3.0:ro;xdg-download;/run/.heim_org.h5l.kcm-socket;xdg-run/speech-dispatcher:ro;\npersistent=.mozilla;\n\n[Session Bus Policy]\norg.mozilla.firefox_beta.*=own\norg.mozilla.firefox.*=own\norg.mpris.MediaPlayer2.firefox.*=talk\norg.gtk.vfs.*=talk\norg.a11y.Bus=talk\norg.freedesktop.FileManager1=talk\n\n[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n\n[Environment]\nDICPATH=/usr/share/hunspell\n\n[Extension org.freedesktop.Platform.ffmpeg-full]\ndirectory=lib/ffmpeg\nadd-ld-path=.\nversion=24.08\n\n[Extension org.mozilla.firefox.Locale]\ndirectory=share/runtime/langpack\nno-autodownload=true\nsubdirectories=true\nversion=nightly\n\n[Extension org.mozilla.firefox.systemconfig]\ndirectory=etc/firefox\nno-autodownload=true\nversion=nightly\n\n[Extension org.mozilla.firefox.nightly.Locale]\ndirectory=share/runtime/locale\nautodelete=true\nlocale-subset=true\n\n[Extension org.mozilla.firefox.nightly.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=org.mozilla.firefox.nightly.Locale;org.mozilla.firefox.nightly.Debug;",
-            "org.flatpak.installed-size": "326895616",
-            "org.flatpak.download-size": "123230705"
+            "org.flatpak.installed-size": "326947840",
+            "org.flatpak.download-size": "123237773"
           }
         }
       ]
