@@ -74,13 +74,13 @@ modules:
     sources:
       - type: archive
         url: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz
-        sha256: 440790988c807044f2621d7bf407f24c021937f264c633b113f4d094a606043c
+        sha256: 564cddfd1b3cd14b01f404582d84f89aa3ddf51a2abe71c1b86971f9dc5438b2
         strip-components: 0
         only-arches:
           - x86_64
       - type: archive
         url: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz
-        sha256: c1b9fb50e4065ca90c4357da4b50fcf282a30615c7e24f12b5a301be484459c8
+        sha256: 7ad181f4702923f81824b9c8875fc71436c69e359c417434c192c7d673c4ad2c
         strip-components: 0
         only-arches:
           - aarch64
