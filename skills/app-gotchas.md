@@ -24,6 +24,7 @@ Per-app known issues and workarounds. Each app has a dedicated `GOTCHAS.md` in i
 | virtualbox | `flatpaks/virtualbox/GOTCHAS.md` | KVM backend (no vboxdrv kernel module), X11 only (VBoxSVGA Wayland bug), hardening disabled, gsoap serial build, shared-modules SDL1+GLU inlined, permanent lint exceptions: `appstream-external-screenshot-url` (builddir) + `appstream-screenshots-not-mirrored-in-ostree` (repo) — screenshots hosted at external URLs |
 | org.altlinux.Tuner | (inline in `app-gotchas.md`) | `libpeas` 2.x requires `-Dgjs=false` on GNOME Platform 49 (mozjs-128 not available) |
 | rancher-desktop | (inline in `app-gotchas.md`) | x86_64 only, Electron, upstream icon 2134×2134 (pre-resize required), `--no-sandbox` wrapper, `--device=all` for KVM |
+| saturn | `flatpaks/saturn/GOTCHAS.md` | ECL first compile 20-40min (use goose for quick iteration), three screenshot lint exceptions across three stages, `app-id:` preferred (or `id:` — both supported by Justfile), x-skip-launch-check required (GTK4 GUI), no upstream tags (manual Renovate), two-build bootstrap pattern |
 
 ## Electron apps — general notes
 
@@ -220,6 +221,7 @@ Apps that need this flag: any GTK, Qt, Electron, or other GUI app that opens a w
 - `rancher-desktop` — Electron GUI Kubernetes manager, exits 1 without display
 - `virtualbox` — Qt GUI VM manager, exits 1 without display
 - `io.github.DenysMb.Kontainer` — GUI container manager
+- `saturn` — GTK4 GUI Flatpak manager, exits 1 without Wayland display
 
 ## rancher-desktop
 
@@ -254,3 +256,39 @@ that passes `--no-sandbox` to the Electron binary.
 |---|---|
 | `appstream-external-screenshot-url` | Screenshots hosted at external URLs |
 | `appstream-screenshots-not-mirrored-in-ostree` | Screenshots not mirrored to Flathub CDN |
+
+### saturn (io.github.kolunmi.Saturn)
+
+Saturn is a GTK4 Flatpak launcher/manager built in C + ECL (Embeddable Common Lisp).
+
+**ECL compile time:** First build is 20–40 minutes (compiling a full CL runtime from C source). Subsequent builds use ccache (~1 min). Do not use Saturn for quick CI iteration — use `goose` instead.
+
+**Three-stage lint exceptions for screenshots:**
+testhub runs `flatpak-builder-lint` three times with distinct exception key namespaces:
+| Lint stage | Exception key for no-screenshot apps |
+|---|---|
+| manifest | `metainfo-missing-screenshots` |
+| builddir | `appstream-missing-screenshots` |
+| repo | `appstream-screenshots-not-mirrored-in-ostree` |
+All three must be in `exceptions.json` if the app has no screenshots.
+
+**`app-id:` preferred, `id:` also supported:**
+flatpak-builder accepts both `id:` and `app-id:` in manifests. testhub's Justfile
+`metadata` recipe reads `.app-id` and falls back to `.id`, so either key works.
+The OCI export step only fails with "could not determine app-id" if **neither** key
+is present. Saturn uses `app-id:` for consistency with other testhub apps.
+
+**x-skip-launch-check required:**
+Saturn is a GTK4 GUI app. The e2e-install launch check (`timeout 5 flatpak run`) will
+exit 1 with "Failed to open display" in the headless CI container.
+Add `x-skip-launch-check: true` to `manifest.yaml`.
+
+**Broad finish-args (Flatpak manager):**
+`--filesystem=/var/lib/flatpak`, `--filesystem=home`, `--talk-name=org.freedesktop.Flatpak`
+are all required because Saturn is a Flatpak manager. Covered by exceptions:
+`finish-args-flatpak-system-folder-access`, `finish-args-home-filesystem-access`,
+`finish-args-flatpak-spawn-access`.
+
+**No upstream tags:** Pin to git commit hash. Renovate cannot auto-track.
+
+**Two-build bootstrap:** See `flatpaks/saturn/GOTCHAS.md` and `skills/pipeline.md`.
