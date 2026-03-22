@@ -1,7 +1,7 @@
 # CI environment reference
 # ─────────────────────────────────────────────────────────────────────────────
-# compile-oci and e2e-install run INSIDE gnome-49 container:
-#   ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+# compile-oci runs INSIDE gnome-50 container:
+#   ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
 #   Has: flatpak-builder, yq (after install-tools-yq), python3, ostree,
 #        buildah, flatpak-builder-lint, flatpak, skopeo, just (after install)
 #
@@ -76,7 +76,7 @@ jobs:
             echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── Build flatpak inside gnome-49 container ────────────────────────────────
+  # ── Build flatpak inside gnome-50 container ────────────────────────────────
   compile-oci:
     needs: diff-changed-apps
     if: needs.diff-changed-apps.outputs.apps != '[]' && needs.diff-changed-apps.outputs.apps != ''
@@ -95,7 +95,7 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
     # SOURCE_DATE_EPOCH=0: normalises tar timestamps so OCI blob hashes are deterministic
     # across identical-content builds. build-bundle reads this env directly.
@@ -151,7 +151,7 @@ jobs:
       - name: Lint Flatpak manifest
         if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         run: |
-          # flatpak-builder-lint is available directly in the gnome-49 container at /app/bin/flatpak-builder-lint
+          # flatpak-builder-lint is available directly in the gnome-50 container at /app/bin/flatpak-builder-lint
           # Runs before the build to catch manifest issues early. Fails the job on errors.
           EXCEPTIONS_FILE="flatpaks/${{ matrix.app }}/exceptions.json"
           if [ -f "${EXCEPTIONS_FILE}" ]; then
