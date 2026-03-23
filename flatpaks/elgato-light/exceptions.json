@@ -1,0 +1,9 @@
+{
+    "org.linuxrising.ElgatoLight": [
+        "appid-filename-mismatch",
+        "appstream-no-flathub-manifest-key",
+        "metainfo-missing-screenshots",
+        "appstream-missing-screenshots",
+        "appstream-screenshots-not-mirrored-in-ostree"
+    ]
+}
