@@ -84,13 +84,13 @@ This applies to all install operations: manual testing, validation steps, CI val
 ## Self-learning feedback loop — primary methodology
 
 **Load the operating model at session start:**
-```
+```bash
 cat ~/src/skills/cicd-learning/SKILL.md
 ```
 
-**Read the Copilot Space first:**
-```
-github-mcp-server-get_copilot_space(owner: "projectbluefin", name: "bluefin")
+**Check the work queue:**
+```bash
+gh issue list --repo projectbluefin/testhub --label copilot-ready --state open
 ```
 
 Skills are the single source of truth for this repo's institutional knowledge.
@@ -100,7 +100,7 @@ The feedback loop is non-negotiable: every task ends with skills more complete t
 moving on. Dispatch a background agent if needed so main-session work continues.
 
 **The next-agent test:** before closing any task — *"Would the next agent reading these
-skills and the Copilot Space avoid this exact problem?"* If no → skill is still incomplete.
+skills and the work queue avoid this exact problem?"* If no → skill is still incomplete.
 
 **Mandatory triggers — update before moving on:**
 
@@ -112,7 +112,8 @@ skills and the Copilot Space avoid this exact problem?"* If no → skill is stil
 
 **How to update:** edit the relevant `skills/*.md` file, commit with `docs(skills): ...`
 
-## Architecture reference
+## Session End
 
-Pipeline decisions and findings are in the workflow-state DB:
-`journal_search(text: "jorgehub", limit: 10)`
+```bash
+supermemory(mode="add", type="conversation", scope="project", content="[WHAT]...[WHY]...[FIX]...[NEXT]...")
+```
