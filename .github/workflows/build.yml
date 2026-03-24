@@ -226,7 +226,7 @@ jobs:
           retention-days: 90
 
       - name: File issue on build failure
-        if: failure() && steps.detect-path.outputs.skip != 'true'
+        if: failure() && steps.detect-path.outputs.skip != 'true' && github.repository == 'projectbluefin/testhub'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
