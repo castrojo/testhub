@@ -672,7 +672,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check digest availability
+        id: digest-check
+        run: |
+          COUNT=$(find /tmp/digests -type f -name digest.txt 2>/dev/null | wc -l)
+          if [[ "${COUNT}" -gt 0 ]]; then
+            echo "has-digests=true" >> "$GITHUB_OUTPUT"
+            echo "==> Found ${COUNT} digest artifact(s) for ${{ matrix.app }}"
+          else
+            echo "has-digests=false" >> "$GITHUB_OUTPUT"
+            echo "==> SKIP publish-manifest-list for ${{ matrix.app }}: no per-arch digest artifacts found"
+          fi
+
       - name: Install just
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: |
           ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/aarch64/')
           curl -fsSL "https://github.com/casey/just/releases/download/1.40.0/just-1.40.0-${ARCH}-unknown-linux-musl.tar.gz" \
@@ -680,15 +693,18 @@ jobs:
 
       - name: Read version and OCI metadata
         id: version
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: |
           VERSION=$(just metadata '${{ matrix.app }}' version 2>/dev/null || echo "")
           [[ "${VERSION}" == "null" ]] && VERSION=""
           [[ -n "${VERSION}" ]] && echo "version=${VERSION}" >> "$GITHUB_OUTPUT" || true
 
       - name: Install podman
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: just install-tools-podman
 
       - name: Build and push OCI image indexes
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: just push-manifest-list '${{ matrix.app }}'
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -696,6 +712,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify image index shape
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: |
           APP="${{ matrix.app }}"
           APP="${APP,,}"
@@ -725,9 +742,11 @@ jobs:
           echo "==> All descriptors have org.opencontainers.image.ref.name: OK"
 
       - name: Install cosign
+        if: steps.digest-check.outputs.has-digests == 'true'
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Log in to ghcr.io for cosign
+        if: steps.digest-check.outputs.has-digests == 'true'
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
@@ -735,6 +754,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign OCI image index with cosign
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: |
           APP="${{ matrix.app }}"
           APP="${APP,,}"
@@ -754,6 +774,7 @@ jobs:
           fi
 
       - name: Attest SBOMs to manifest list
+        if: steps.digest-check.outputs.has-digests == 'true'
         run: |
           APP="${{ matrix.app }}"
           APP="${APP,,}"
