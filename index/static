@@ -215,7 +215,7 @@
       "Name": "castrojo/testhub/thunderbird-nightly",
       "Images": [
         {
-          "Digest": "sha256:b838019e45b4afd664620e4087a798429d676150c32bad9f229bac00bc72c744",
+          "Digest": "sha256:4fa1be2b4fe31a8ddbcb517a02069c669a297ec5731f1402273485639b5aa54f",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
