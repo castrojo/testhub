@@ -270,6 +270,41 @@
           }
         }
       ]
+    },
+    {
+      "Name": "castrojo/testhub/saturn",
+      "Images": [
+        {
+          "Digest": "sha256:e345d3707c9276c9ce0c74eb533e0b028a8ed86372dfad6501378d78460bf675",
+          "MediaType": "application/vnd.oci.image.manifest.v1+json",
+          "OS": "linux",
+          "Architecture": "arm64",
+          "Tags": [
+            "latest"
+          ],
+          "Labels": {
+            "org.flatpak.ref": "app/io.github.kolunmi.Saturn/aarch64/stable",
+            "org.flatpak.metadata": "[Application]\nname=io.github.kolunmi.Saturn\nruntime=org.gnome.Platform/aarch64/50\nsdk=org.gnome.Sdk/aarch64/50\ncommand=saturn\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;fallback-x11;\ndevices=dri;\nfilesystems=home;/var/lib/flatpak;\n\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n\n[Extension io.github.kolunmi.Saturn.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=io.github.kolunmi.Saturn.Debug;",
+            "org.flatpak.installed-size": "23350784",
+            "org.flatpak.download-size": "6750234"
+          }
+        },
+        {
+          "Digest": "sha256:7f739b127cd92a5b4d4ceadaddfb21443f2465614b749df872dbc8d5915d353d",
+          "MediaType": "application/vnd.oci.image.manifest.v1+json",
+          "OS": "linux",
+          "Architecture": "amd64",
+          "Tags": [
+            "latest"
+          ],
+          "Labels": {
+            "org.flatpak.ref": "app/io.github.kolunmi.Saturn/x86_64/stable",
+            "org.flatpak.metadata": "[Application]\nname=io.github.kolunmi.Saturn\nruntime=org.gnome.Platform/x86_64/50\nsdk=org.gnome.Sdk/x86_64/50\ncommand=saturn\n\n[Context]\nshared=network;ipc;\nsockets=x11;wayland;fallback-x11;\ndevices=dri;\nfilesystems=home;/var/lib/flatpak;\n\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n\n[Extension io.github.kolunmi.Saturn.Debug]\ndirectory=lib/debug\nautodelete=true\nno-autodownload=true\n\n[Build]\nbuilt-extensions=io.github.kolunmi.Saturn.Debug;",
+            "org.flatpak.installed-size": "23332352",
+            "org.flatpak.download-size": "7168512"
+          }
+        }
+      ]
     }
   ]
 }
