@@ -420,7 +420,7 @@
       "Name": "castrojo/testhub/goose",
       "Images": [
         {
-          "Digest": "sha256:4795875684ed068cd9373940b326cfa1bbad037f5c2c8043cf419e8b0944fec2",
+          "Digest": "sha256:133967ffc69d52fb7ab2bf87c79910594210afbd73b4f8494c54a9d8a198c5e8",
           "MediaType": "application/vnd.oci.image.manifest.v1+json",
           "OS": "linux",
           "Architecture": "amd64",
