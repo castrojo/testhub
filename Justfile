@@ -783,11 +783,11 @@ run-test app arch:
         exit 0
     fi
 
-    # Skip if install test disabled
+    # Skip if install test disabled (bootstrap marker path)
     SKIP_INSTALL=$(just metadata "${APP}" skip-install-test 2>/dev/null || echo "")
     if [[ "${SKIP_INSTALL}" == "true" ]]; then
-        echo "==> SKIP: install test skipped for ${APP} (skip-install-test: true)"
-        exit 0
+        echo "==> BOOTSTRAP-SKIP: install test skipped for ${APP} (skip-install-test: true)"
+        exit 42
     fi
 
     # Resolve app-id
@@ -821,11 +821,23 @@ run-test app arch:
     fi
 
     # Add testhub remote (from live gh-pages index)
-    flatpak remote-add --system --if-not-exists testhub \
+    flatpak remote-add --user --if-not-exists testhub \
         oci+https://projectbluefin.github.io/testhub
 
-    # Install
-    flatpak install --system --noninteractive testhub "${APP_ID}"
+    # Install (auto-bootstrap skip if app not yet in live index)
+    set +e
+    INSTALL_OUT=$(flatpak install --user --noninteractive testhub "${APP_ID}" 2>&1)
+    INSTALL_EXIT=$?
+    set -e
+    if [[ "${INSTALL_EXIT}" -ne 0 ]]; then
+        if printf '%s\n' "${INSTALL_OUT}" | grep -Fq "Nothing matches" && \
+           printf '%s\n' "${INSTALL_OUT}" | grep -Fq "in remote testhub"; then
+            echo "==> BOOTSTRAP-SKIP: ${APP_ID} not yet in live testhub index"
+            exit 42
+        fi
+        printf '%s\n' "${INSTALL_OUT}" >&2
+        exit "${INSTALL_EXIT}"
+    fi
 
     # Launch check
     SKIP_LAUNCH=$(just metadata "${APP}" skip-launch-check 2>/dev/null || echo "")
@@ -835,7 +847,7 @@ run-test app arch:
         LAUNCH_ARGS=$(yq -r '(.["x-launch-check"] // .["launch-check"] // []) | join(" ")' "${MANIFEST}" 2>/dev/null || echo "")
         set +e
         # shellcheck disable=SC2086
-        timeout 5 flatpak run "${APP_ID}" ${LAUNCH_ARGS}
+        timeout 5 flatpak run --user "${APP_ID}" ${LAUNCH_ARGS}
         EXIT=$?
         set -e
         if [[ "${EXIT}" -eq 0 ]]; then
@@ -848,7 +860,7 @@ run-test app arch:
     fi
 
     # Cleanup
-    flatpak uninstall --system --noninteractive "${APP_ID}" || true
+    flatpak uninstall --user --noninteractive "${APP_ID}" || true
     echo "==> run-test done for ${APP_ID}"
 
 # Update gh-pages index from latest ghcr.io digest and push
@@ -901,6 +913,83 @@ validate app:
             {{container_image}} \
             appstreamcli validate --no-net "/workspace/$METAINFO"
     fi
+
+# Lint a manifest.yaml app locally without hitting CI (~10s). bundle-repack apps (release.yaml) are not supported — use `just loop <app>` instead.
+local-lint app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MANIFEST="flatpaks/{{app}}/manifest.yaml"
+    if [ ! -f "$MANIFEST" ]; then
+        echo "ERROR: $MANIFEST not found. local-lint only supports manifest.yaml apps." >&2
+        echo "For bundle-repack apps (release.yaml), use: just loop {{app}}" >&2
+        exit 1
+    fi
+    echo "==> local-lint: {{app}}"
+    EXCEPTIONS_ARG=""
+    if [ -f "flatpaks/{{app}}/exceptions.json" ]; then
+        EXCEPTIONS_ARG="--exceptions --user-exceptions /app/exceptions.json"
+    fi
+    echo "--- manifest lint ---"
+    podman run --rm \
+        -e SOURCE_DATE_EPOCH=0 \
+        -v "$(pwd)/flatpaks/{{app}}:/app:ro,z" \
+        ghcr.io/flathub-infra/flatpak-github-actions:gnome-50 \
+        flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+            manifest $EXCEPTIONS_ARG /app/manifest.yaml
+    echo "--- appstreamcli validate (non-fatal) ---"
+    METAINFO=$(find "flatpaks/{{app}}" -name "*.metainfo.xml" | head -1)
+    if [ -n "$METAINFO" ]; then
+        podman run --rm \
+            -e SOURCE_DATE_EPOCH=0 \
+            -v "$(pwd)/flatpaks/{{app}}:/app:ro,z" \
+            ghcr.io/flathub-infra/flatpak-github-actions:gnome-50 \
+            appstreamcli validate --no-net "/app/$(basename "$METAINFO")" || true
+    else
+        echo "(no .metainfo.xml found, skipping appstreamcli)"
+    fi
+    echo "==> local-lint: {{app}} OK"
+
+# Build a manifest.yaml app locally and run all three lint stages (build + lint only, no install). bundle-repack apps (release.yaml) are not supported — use `just loop <app>` instead.
+local-build app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MANIFEST="flatpaks/{{app}}/manifest.yaml"
+    if [ ! -f "$MANIFEST" ]; then
+        echo "ERROR: $MANIFEST not found. local-build only supports manifest.yaml apps." >&2
+        echo "For bundle-repack apps (release.yaml), use: just loop {{app}}" >&2
+        exit 1
+    fi
+    echo "==> local-build: {{app}} (build + lint, no install)"
+    CCACHE_DIR="${HOME}/.cache/testhub-flatpak-builder/{{app}}"
+    mkdir -p "$CCACHE_DIR"
+    EXCEPTIONS_ARG=""
+    if [ -f "flatpaks/{{app}}/exceptions.json" ]; then
+        EXCEPTIONS_ARG="--exceptions --user-exceptions /workspace/flatpaks/{{app}}/exceptions.json"
+    fi
+    podman run --rm --privileged \
+        -e SOURCE_DATE_EPOCH=0 \
+        -v "$(pwd):/workspace:z" \
+        -v "${CCACHE_DIR}:/cache/state:z" \
+        -w /workspace \
+        ghcr.io/flathub-infra/flatpak-github-actions:gnome-50 \
+        bash -c '
+            set -euo pipefail
+            trap "rm -rf flatpak_app repo" EXIT
+            echo "--- flatpak-builder ---"
+            flatpak-builder --ccache --state-dir=/cache/state --repo=repo flatpak_app \
+                flatpaks/'"{{app}}"'/manifest.yaml
+            echo "--- lint: manifest ---"
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+                manifest '"$EXCEPTIONS_ARG"' flatpaks/'"{{app}}"'/manifest.yaml
+            echo "--- lint: builddir ---"
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+                builddir '"$EXCEPTIONS_ARG"' flatpak_app
+            echo "--- lint: repo ---"
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+                repo '"$EXCEPTIONS_ARG"' repo
+            echo "--- all lint stages passed ---"
+        '
+    echo "==> local-build: {{app}} OK"
 
 # Compare current chunkah invocation with upstream README recommendation
 check-chunkah:
