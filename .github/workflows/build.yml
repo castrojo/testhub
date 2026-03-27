@@ -56,25 +56,62 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Detect changed apps
         id: detect
+        env:
+          INPUT_APP: ${{ inputs.app || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          if [[ -n "${{ inputs.app }}" ]]; then
-            echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
-          elif git rev-parse HEAD~1 >/dev/null 2>&1; then
-            APPS=$(git diff --name-only HEAD~1 HEAD -- 'flatpaks/' \
-              | cut -d/ -f2 | sort -u \
-              | jq -Rnc '[inputs | select(length > 0)]')
-            echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
-          else
-            # First commit or shallow clone — treat all flatpak dirs as changed
-            APPS=$(ls -d flatpaks/*/ 2>/dev/null \
-              | xargs -I{} basename {} \
-              | jq -Rnc '[inputs | select(length > 0)]')
-            echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
+          ALL_APPS=$(ls -d flatpaks/*/ 2>/dev/null | xargs -n1 basename | jq -Rnc '[inputs | select(length > 0)]')
+
+          if [[ -n "${INPUT_APP}" ]]; then
+            echo "apps=[\"${INPUT_APP}\"]" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "apps=${ALL_APPS}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE=""
+          HEAD="${HEAD_SHA}"
+
+          case "${EVENT_NAME}" in
+            push)
+              BASE="${PUSH_BEFORE_SHA}"
+              ;;
+            pull_request)
+              BASE="${PR_BASE_SHA}"
+              ;;
+            merge_group)
+              BASE="${MERGE_BASE_SHA}"
+              ;;
+            *)
+              echo "apps=${ALL_APPS}" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          git fetch --no-tags --prune --depth=1 origin "${BASE}" "${HEAD}" >/dev/null 2>&1 || true
+
+          if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]] || \
+             ! git cat-file -e "${BASE}^{commit}" 2>/dev/null || \
+             ! git cat-file -e "${HEAD}^{commit}" 2>/dev/null; then
+            echo "apps=${ALL_APPS}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          APPS=$(git diff --name-only "${BASE}" "${HEAD}" -- 'flatpaks/' \
+            | cut -d/ -f2 | sort -u \
+            | jq -Rnc '[inputs | select(length > 0)]')
+          echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
 
   # ── Build flatpak inside gnome-50 container ────────────────────────────────
   compile-oci:

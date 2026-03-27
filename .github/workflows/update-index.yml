@@ -7,13 +7,11 @@ name: Sync Flatpak Remote Index
 # Job order enforces a per-app gate:
 #   prepare → e2e-install → commit-index
 #
-# e2e-install uploads an e2e-passed-<app>-<arch> artifact ONLY on success.
-# commit-index checks for that artifact before writing each app's index entry.
-# An app whose e2e-install failed is silently skipped — its last good index
-# entry is preserved. Other apps in the same build are not affected.
-#
-# This prevents a single broken app from blocking the index update for all apps.
-# The index always reflects the last known-good state per app.
+# e2e-install uploads one of:
+#   - e2e-passed-<app>-<arch>
+#   - e2e-bootstrap-skipped-<app>-<arch>
+# commit-index only writes entries with one of these markers.
+# bootstrap-skipped is accepted only for first-time onboarding (not yet indexed).
 #
 # commit-index re-downloads the digest artifacts from the triggering build run
 # and reruns update-index.py — deterministic, no cross-job artifact needed.
@@ -82,8 +80,8 @@ jobs:
 
   # ── E2E install test ──────────────────────────────────────────────────────
   # Gate: runs BEFORE gh-pages is updated. Per-app: each matrix job uploads
-  # an e2e-passed-<app>-<arch> artifact ONLY on success. commit-index checks
-  # for that artifact before writing each app's index entry.
+  # pass or bootstrap-skip marker artifact. commit-index checks marker artifacts
+  # before writing each app's index entry.
   #
   # Launch check: exit 0 = clean exit (PASS), exit 124 = timeout/headless GUI (PASS), other = FAIL
   # Apps that cannot launch headless must set x-skip-launch-check: true in their manifest.
@@ -113,10 +111,23 @@ jobs:
 
       - name: Run install test
         run: |
+          set +e
           just run-test '${{ matrix.app }}' '${{ matrix.arch }}'
-          touch /tmp/e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
+          RC=$?
+          set -e
+          if [[ "${RC}" -eq 0 ]]; then
+            touch /tmp/e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
+            echo "==> PASS: install test passed for ${{ matrix.app }} ${{ matrix.arch }}"
+          elif [[ "${RC}" -eq 42 ]]; then
+            touch /tmp/e2e-bootstrap-skipped-${{ matrix.app }}-${{ matrix.arch }}
+            echo "==> INFO: bootstrap-skip for ${{ matrix.app }} ${{ matrix.arch }}"
+          else
+            echo "==> FAIL: install test failed for ${{ matrix.app }} ${{ matrix.arch }} (exit ${RC})" >&2
+            exit "${RC}"
+          fi
 
       - name: Upload e2e-passed artifact
+        if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: e2e-passed-${{ matrix.app }}-${{ matrix.arch }}
@@ -124,23 +135,31 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+      - name: Upload e2e-bootstrap-skipped artifact
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: e2e-bootstrap-skipped-${{ matrix.app }}-${{ matrix.arch }}
+          path: /tmp/e2e-bootstrap-skipped-${{ matrix.app }}-${{ matrix.arch }}
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Uninstall on failure
         if: always()
         run: |
           APP_ID=$(just metadata '${{ matrix.app }}' app-id 2>/dev/null || echo "")
-          [[ -n "${APP_ID}" ]] && flatpak uninstall --system --noninteractive "${APP_ID}" || true
+          [[ -n "${APP_ID}" ]] && flatpak uninstall --user --noninteractive "${APP_ID}" || true
 
   # ── Commit index to gh-pages ──────────────────────────────────────────────
-  # Runs after e2e-install finishes (pass or fail — not skipped).
-  # Per-app gate: only writes index entries for apps whose e2e-passed artifact exists.
-  # Apps that failed e2e are skipped; their last good index entry is preserved.
+  # Runs only when e2e-install matrix fully succeeds.
+  # Per-app gate: only writes index entries for apps whose pass/bootstrap marker exists.
+  # Apps without valid marker are skipped; their last good index entry is preserved.
   # Serialised via concurrency group to prevent races between concurrent builds.
   commit-index:
     needs: [prepare, e2e-install]
     if: |
-      always() &&
       needs.prepare.result == 'success' &&
-      needs.e2e-install.result != 'skipped'
+      needs.e2e-install.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -176,6 +195,14 @@ jobs:
           merge-multiple: true
         continue-on-error: true
 
+      - name: Download all e2e-bootstrap-skipped artifacts from this run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: e2e-bootstrap-skipped-*
+          path: /tmp/e2e-bootstrap-skipped
+          merge-multiple: true
+        continue-on-error: true
+
       - name: Login to ghcr.io for skopeo inspect
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
@@ -190,6 +217,7 @@ jobs:
         run: |
           cd pages
           shopt -s nullglob
+          : > /tmp/index-status.tsv
           for DIGEST_FILE in /tmp/digests/digest-*.txt; do
             filename=$(basename "${DIGEST_FILE}")
             name="${filename%.txt}"
@@ -198,14 +226,31 @@ jobs:
             APP_ORIG="${REST%-${ARCH}}"
             APP="${APP_ORIG,,}"
             DIGEST=$(cat "${DIGEST_FILE}")
+            FULL_REPO="${{ github.repository }}/${APP}"
 
-            # Per-app gate: only write entry if e2e-install passed for this app+arch.
-            # Artifact names preserve original case (e.g. org.altlinux.Tuner);
-            # check both lowercased and original-case marker files.
-            if [[ ! -f "/tmp/e2e-passed/e2e-passed-${APP_ORIG}-${ARCH}" ]] && \
-               [[ ! -f "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
-              echo "==> SKIP index update: ${APP} ${ARCH} — e2e-install did not pass"
+            HAS_PASS=false
+            HAS_BOOTSTRAP=false
+            if [[ -f "/tmp/e2e-passed/e2e-passed-${APP_ORIG}-${ARCH}" ]] || \
+               [[ -f "/tmp/e2e-passed/e2e-passed-${APP}-${ARCH}" ]]; then
+              HAS_PASS=true
+            fi
+            if [[ -f "/tmp/e2e-bootstrap-skipped/e2e-bootstrap-skipped-${APP_ORIG}-${ARCH}" ]] || \
+               [[ -f "/tmp/e2e-bootstrap-skipped/e2e-bootstrap-skipped-${APP}-${ARCH}" ]]; then
+              HAS_BOOTSTRAP=true
+            fi
+
+            if [[ "${HAS_PASS}" != "true" && "${HAS_BOOTSTRAP}" != "true" ]]; then
+              echo "==> SKIP index update: ${APP} ${ARCH} — no pass/bootstrap marker"
+              printf '%s\t%s\t%s\n' "${APP}" "${ARCH}" "skip-no-marker" >> /tmp/index-status.tsv
               continue
+            fi
+
+            if [[ "${HAS_BOOTSTRAP}" == "true" && "${HAS_PASS}" != "true" ]]; then
+              if APP_REPO="${FULL_REPO}" python3 -c 'import json, os; from pathlib import Path; p = Path("index/static"); d = json.loads(p.read_text()) if p.exists() else {"Results": []}; exists = any(r.get("Name") == os.environ["APP_REPO"] for r in d.get("Results", [])); raise SystemExit(0 if exists else 1)'
+              then
+                echo "ERROR: bootstrap marker refused for already-indexed app ${APP} ${ARCH}" >&2
+                exit 1
+              fi
             fi
 
             echo "==> Updating index: ${APP} ${ARCH} ${DIGEST}"
@@ -213,8 +258,39 @@ jobs:
               --app "${APP}" \
               --digest "${DIGEST}" \
               --registry ghcr.io \
-              --repo "${{ github.repository }}/${APP}" \
+              --repo "${FULL_REPO}" \
               --tags "latest"
+
+            if [[ "${HAS_PASS}" == "true" ]]; then
+              printf '%s\t%s\t%s\n' "${APP}" "${ARCH}" "pass" >> /tmp/index-status.tsv
+            else
+              printf '%s\t%s\t%s\n' "${APP}" "${ARCH}" "bootstrap-skip" >> /tmp/index-status.tsv
+            fi
+          done
+
+      - name: Write index outcome summary
+        if: always()
+        run: |
+          echo "## update-index outcomes" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| app | arch | outcome |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          shopt -s nullglob
+          for DIGEST_FILE in /tmp/digests/digest-*.txt; do
+            filename=$(basename "${DIGEST_FILE}")
+            name="${filename%.txt}"
+            REST="${name#digest-}"
+            ARCH="${REST##*-}"
+            APP_ORIG="${REST%-${ARCH}}"
+            APP="${APP_ORIG,,}"
+            OUTCOME="cancelled"
+            if [[ -f /tmp/index-status.tsv ]]; then
+              MATCH=$(rg -m1 "^${APP}\t${ARCH}\t" /tmp/index-status.tsv || true)
+              if [[ -n "${MATCH}" ]]; then
+                OUTCOME=$(printf '%s\n' "${MATCH}" | cut -f3)
+              fi
+            fi
+            echo "| ${APP} | ${ARCH} | ${OUTCOME} |" >> "$GITHUB_STEP_SUMMARY"
           done
 
       - name: Commit and push index
