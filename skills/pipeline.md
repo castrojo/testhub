@@ -11,6 +11,28 @@ Build pipeline. Two paths, one common output.
 - OCI label questions → `skills/flatpak-labels.md`
 - Index / gh-pages changes → `skills/gh-pages-index.md`
 
+## PR title convention (project-specific)
+
+For upstream handoff in this repo, avoid generic PR titles like `feat(flatpaks): add`.
+Use descriptive conventional titles per app:
+
+```text
+feat(<app-slug>): package <app-id>
+```
+
+Examples:
+- `feat(elgato-light): package org.linuxrising.ElgatoLight`
+- `feat(wmdock): package org.wmakerdock.Config`
+
+If needed, append a concise qualifier for special packaging constraints:
+
+```text
+feat(<app-slug>): package <app-id> (x86_64 bundle-repack)
+```
+
+When providing PR handoff links to the human, include 2-3 multiple-choice title options
+and mark the recommended one first.
+
 ## Two build paths
 
 | File | Path | Example apps |
@@ -18,7 +40,7 @@ Build pipeline. Two paths, one common output.
 | `flatpaks/<app>/manifest.yaml` | flatpak-builder | ghostty, firefox-nightly, lmstudio |
 | `flatpaks/<app>/release.yaml` | bundle-repack | goose |
 
-**flatpak-builder path** — builds from source inside gnome-49 container, requires offline
+**flatpak-builder path** — builds from source inside gnome-50 container, requires offline
 dependency manifests (no network during build per Flathub policy). Produces an OSTree repo
 then exports OCI.
 
@@ -29,7 +51,7 @@ OSTree via `flatpak build-import-bundle`, exports OCI. Cannot inject source-side
 ## Stages (both paths)
 
 ```
-flatpak-builder / bundle-repack (gnome-49 container, --privileged)
+flatpak-builder / bundle-repack (gnome-50 container, --privileged)
   → OSTree repo (.${app}-ostree-repo/)
   → flatpak build-bundle --oci (.${app}.oci/) — single flat layer
   → podman pull oci:... → IMAGE_ID
@@ -47,7 +69,9 @@ just loop-all        # all apps concurrently (preferred validation pass)
 just build <app>     # full: build + push to ghcr.io with zstd:chunked
 just update-index <app>   # regenerate gh-pages index from latest ghcr.io digest
 just check-index          # validate index/static JSON
-just validate <app>       # lint manifest + metainfo inside gnome-49
+just validate <app>       # lint manifest + metainfo inside gnome-49 (note: new local-lint/local-build recipes use gnome-50)
+just local-lint <app>     # fast manifest lint inside gnome-50 (~10s, manifest.yaml apps only)
+just local-build <app>    # full build + all 3 lint stages inside gnome-50 (no install, manifest.yaml apps only)
 ```
 
 ## Determinism
@@ -149,7 +173,7 @@ even when CI passed. After any push, validate inside a throwaway container:
 ```bash
 podman run --rm -it --privileged \
   -v ~/src/<repo>:/workspace:z -w /workspace \
-  ghcr.io/flathub-infra/flatpak-github-actions:gnome-49 bash
+  ghcr.io/flathub-infra/flatpak-github-actions:gnome-50 bash
 # inside:
 flatpak remote-add --user --if-not-exists <repo> /workspace/<repo>.flatpakrepo
 flatpak install --user --noninteractive <repo> <app-id>
@@ -177,15 +201,23 @@ until CI passes end-to-end:
 Never close a "new app" issue based solely on files being committed. The Flatpak
 must be buildable and installable before the issue is closed.
 
-### First-time onboarding bootstrap (chicken-and-egg)
+### First-time onboarding bootstrap (marker-based)
 
 The `e2e-install` job installs the app from the **live gh-pages index**. For a brand-new
 app that has never been published, the index has no entry yet — `e2e-install` will fail
 with `"Nothing matches <app-id> in remote testhub"`.
 
-`commit-index` requires a successful e2e-passed marker to add the app to the index. This
-creates a chicken-and-egg: the app can't be installed until it's indexed, but it can't be
-indexed until the install succeeds.
+`commit-index` requires a marker from `e2e-install` to add the app to the index. This creates
+a chicken-and-egg: the app can't be installed until it's indexed, but it can't be indexed
+until `e2e-install` reports an allowed outcome.
+
+**Marker contract:**
+
+- `e2e-passed-<app>-<arch>`: real install test passed
+- `e2e-bootstrap-skipped-<app>-<arch>`: bootstrap skip
+
+Bootstrap skip is accepted only for first-time onboarding. If an app is already present in
+`index/static`, bootstrap skip is rejected and `commit-index` fails closed.
 
 **Bootstrap procedure (two-run approach):**
 
@@ -193,14 +225,14 @@ indexed until the install succeeds.
    ```yaml
    x-skip-install-test: true  # Bootstrap: app not in index yet; remove after first successful index commit
    ```
-2. Commit, push, and trigger a build. The e2e step will skip (exit 0), the e2e-passed
-   marker will be uploaded, and `commit-index` will add the app to the gh-pages index.
+2. Commit, push, and trigger a build. The e2e step will emit a bootstrap-skip marker, and
+   `commit-index` will add the app to the gh-pages index.
 3. Once the first build succeeds and the index is updated, **remove** the flag.
 4. Trigger a second build. This time `e2e-install` will do a real `flatpak install` and
    the full pipeline completes successfully.
 
-Only use `x-skip-install-test: true` as a permanent flag if the app genuinely cannot be
-installed in CI (e.g., requires hardware or root that the runner doesn't have).
+Do not keep `x-skip-install-test: true` permanently for normal apps. It is a bootstrap flag,
+not a long-term bypass.
 
 ## Runtime-update PRs
 
@@ -359,16 +391,16 @@ All of these must be committed to the same `raptor/runtime-<app-id>` branch:
 
 ## Container image provenance
 
-Build and install-test jobs use `ghcr.io/flathub-infra/flatpak-github-actions:gnome-49`.
+Build and install-test jobs use `ghcr.io/flathub-infra/flatpak-github-actions:gnome-50`.
 
 **Important:** `flathub-infra/flatpak-github-actions` was **archived** (deprecated April 24, 2025).
 Images are now served from `flathub-infra/actions-images` but the `ghcr.io` image path and
-tags remain stable. The `gnome-49` tag continues to work. Renovate does not manage this tag —
+tags remain stable. The `gnome-50` tag is current. Renovate does not manage this tag —
 update manually when a newer GNOME SDK version is required.
 
 ## Simplicity rule
 
-Tools available in gnome-49 and ubuntu-24.04 runners: `yq`, `jq`, `python3`, `curl`,
+Tools available in gnome-50 and ubuntu-24.04 runners: `yq`, `jq`, `python3`, `curl`,
 `skopeo`, `podman`, `buildah`, `flatpak`, `ostree`.
 
 - YAML field extraction → `yq '.field' file`
@@ -401,12 +433,12 @@ Two distinct runner environments are used. Assuming tool availability in the wro
 
 | Job | Runner | Container |
 |---|---|---|
-| `compile-oci`, `e2e-install` | ubuntu-24.04 | **gnome-49** (flatpak-builder, ostree, buildah, yq after install, python3) |
+| `compile-oci`, `e2e-install` | ubuntu-24.04 | **gnome-50** (flatpak-builder, ostree, buildah, yq after install, python3) |
 | `sign-and-push`, `publish-manifest-list`, `annotate-packages` | ubuntu-24.04 | **bare** (no container; podman+buildah via Homebrew, cosign via action, oras via download, skopeo, gh) |
 
 ### `just` availability
 
-- gnome-49 container jobs: `just` must be installed explicitly before the first `just` call (add an "Install just" step)
+- gnome-50 container jobs: `just` must be installed explicitly before the first `just` call (add an "Install just" step)
 - bare ubuntu-24.04 jobs: same — `just` is not pre-installed on any runner; always add the install step
 
 ### `brew` PATH on ubuntu-24.04
@@ -576,8 +608,8 @@ Common CI failure patterns that are easy to miss when deep in the logs:
 
 ## New app bootstrap — two-build pattern
 
-When adding a **new app** that has never been in the testhub index, the `e2e-install`
-CI step will fail on the first build with:
+When adding a **new app** that has never been in the testhub index, `e2e-install`
+may return bootstrap-skip instead of a hard failure when install would otherwise hit:
 ```
 Nothing matches app-id 'io.github.foo.Bar' in remote 'testhub'
 ```
@@ -596,6 +628,18 @@ Process:
 2. Remove `x-skip-install-test: true` → Build 2 (real e2e): full install test runs against the now-indexed app.
 
 Never leave `x-skip-install-test: true` in the final merged manifest.
+
+## Flatpak install scope in CI
+
+All CI install-test operations must use user scope:
+
+```bash
+flatpak remote-add --user ...
+flatpak install --user ...
+flatpak uninstall --user ...
+```
+
+Do not use `--system` in CI e2e paths.
 
 ## Three lint stages — distinct exception keys
 
