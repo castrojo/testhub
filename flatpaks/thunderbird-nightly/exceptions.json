@@ -1,6 +1,7 @@
 {
     "org.mozilla.thunderbird.nightly": [
         "appid-filename-mismatch",
+        "finish-args-unnecessary-appid-own-name",
         "metainfo-missing-screenshots",
         "appstream-missing-developer-name",
         "appstream-screenshots-not-mirrored-in-ostree"
