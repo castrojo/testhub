@@ -134,7 +134,7 @@ Do not assume every app is covered by Renovate. As of this repo state, Renovate 
 - `flatpaks/monkey-bubble/release.yaml` (`gitlab-tags`)
 - `flatpaks/wmdock/manifest.yaml` (`gitlab-tags`)
 - `flatpaks/xmms-resuscitated/release.yaml` (`gitlab-tags`, `build-N` regex versioning)
-- `flatpaks/saturn/manifest.yaml` main app source commit (`git-refs` on `HEAD`)
+- `flatpaks/saturn/manifest.yaml` all git `commit:` pins (`git-refs` on `HEAD` per source URL)
 
 Everything else is currently untracked by regex managers because they use non-GitHub sources,
 git commit/tag pins, rolling nightly URLs, or non-semver/non-monotonic identifiers in `version`.
@@ -146,7 +146,7 @@ git commit/tag pins, rolling nightly URLs, or non-semver/non-monotonic identifie
 - `dell-webcam-control` and `redhat-planet` use GitLab generic package URLs but the pinned `version` value is a short commit hash while upstream tags are `build-<hash>` / `latest`; this is not a safe semver stream for automerge
 - `elgato-light` uses a GitLab archive URL pinned by commit hash while upstream tags are `build-N`; no stable one-shot mapping from tag to archive URL + sha in current file shape
 - `monkey-bubble`, `xmms-resuscitated`, `wmdock` are now covered by dedicated GitLab regex managers
-- `saturn` now tracks only the main `kolunmi/Saturn` source `commit:` field via `git-refs`; dependency submodule commits in the same manifest remain manual
+- `saturn` now tracks all `type: git` source `commit:` pins via a generic `git-refs` manager keyed by each source `url:`
 - `io.github.DenysMb.Kontainer`, `org.altlinux.Tuner`, `saturn`, `virtualbox` mostly pin git tags/commits or non-GitHub upstreams outside current Renovate regex scope
 
 When adding coverage for a new source pattern, add a separate custom manager per pattern and

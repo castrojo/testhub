@@ -110,18 +110,17 @@
     },
     {
       "customType": "regex",
-      "description": "Update Saturn app git commit to latest default-branch HEAD",
+      "description": "Update all Saturn manifest git source commits to latest default-branch HEAD",
       "managerFilePatterns": [
         "/^flatpaks\/saturn\/manifest\\.yaml$/"
       ],
       "matchStrings": [
-        "url:\\s*https://github\\.com/kolunmi/Saturn\\.git\\n\\s*commit:\\s*(?<currentDigest>[0-9a-f]{40})"
+        "-\\s*type:\\s*git\\n\\s*url:\\s*(?<packageName>https://[^\\s]+)\\n\\s*commit:\\s*(?<currentDigest>[0-9a-f]{40})"
       ],
       "currentValueTemplate": "HEAD",
       "datasourceTemplate": "git-refs",
-      "depNameTemplate": "kolunmi/Saturn",
-      "packageNameTemplate": "https://github.com/kolunmi/Saturn.git",
-      "autoReplaceStringTemplate": "url: https://github.com/kolunmi/Saturn.git\n        commit: {{{newDigest}}}"
+      "depNameTemplate": "{{{packageName}}}",
+      "autoReplaceStringTemplate": "- type: git\n        url: {{{packageName}}}\n        commit: {{{newDigest}}}"
     },
     {
       "customType": "regex",
