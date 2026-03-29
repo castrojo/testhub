@@ -126,19 +126,25 @@ and `url:`, increase the bound and verify with a Python test.
 
 ### Current coverage reality (verified)
 
-Do not assume every app is covered by Renovate. As of this repo state, Renovate tracks only:
+Do not assume every app is covered by Renovate. As of this repo state, Renovate tracks:
 
 - `flatpaks/goose/release.yaml` (`github-releases`)
 - `flatpaks/ghostty/manifest.yaml` (`github-tags`)
 - `flatpaks/rancher-desktop/manifest.yaml` (`github-releases` asset pattern)
+- `flatpaks/monkey-bubble/release.yaml` (`gitlab-tags`)
+- `flatpaks/wmdock/manifest.yaml` (`gitlab-tags`)
+- `flatpaks/xmms-resuscitated/release.yaml` (`gitlab-tags`, `build-N` regex versioning)
 
 Everything else is currently untracked by regex managers because they use non-GitHub sources,
-git commit/tag pins, rolling nightly URLs, or non-semver identifiers in `version`.
+git commit/tag pins, rolling nightly URLs, or non-semver/non-monotonic identifiers in `version`.
 
 ### Why many apps are intentionally untracked
 
 - `firefox-nightly`, `thunderbird-nightly` use fixed nightly channel URLs and rotating tarball content at same URL; handled by `.github/workflows/update-mozilla-nightly.yml`
-- `lmstudio`, `dell-webcam-control`, `redhat-planet`, `monkey-bubble`, `xmms-resuscitated`, `wmdock`, `elgato-light` are GitLab/CDN patterns not covered by current regex managers
+- `lmstudio` uses vendor CDN URLs (`installers.lmstudio.ai`) with no supported Renovate datasource
+- `dell-webcam-control` and `redhat-planet` use GitLab generic package URLs but the pinned `version` value is a short commit hash while upstream tags are `build-<hash>` / `latest`; this is not a safe semver stream for automerge
+- `elgato-light` uses a GitLab archive URL pinned by commit hash while upstream tags are `build-N`; no stable one-shot mapping from tag to archive URL + sha in current file shape
+- `monkey-bubble`, `xmms-resuscitated`, `wmdock` are now covered by dedicated GitLab regex managers
 - `io.github.DenysMb.Kontainer`, `org.altlinux.Tuner`, `saturn`, `virtualbox` mostly pin git tags/commits or non-GitHub upstreams outside current Renovate regex scope
 
 When adding coverage for a new source pattern, add a separate custom manager per pattern and

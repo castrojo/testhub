@@ -63,6 +63,53 @@
     },
     {
       "customType": "regex",
+      "description": "Update monkey-bubble GitLab release.yaml (version, url, sha256)",
+      "managerFilePatterns": [
+        "/^flatpaks\/monkey-bubble\/release\\.yaml$/"
+      ],
+      "matchStrings": [
+        "version:\\s*(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\\n(?:[^\\n]*\\n){0,5}url:\\s*https://gitlab\\.com/api/v4/projects/80424238/packages/generic/monkey-bubble/v?[0-9]+\\.[0-9]+\\.[0-9]+/(?<urlSuffix>[^\\n]+)\\nsha256:\\s*(?<currentDigest>[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "gitlab-tags",
+      "depNameTemplate": "cschalle/monkey-bubble",
+      "registryUrlTemplate": "https://gitlab.com",
+      "versioningTemplate": "semver-coerced",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "autoReplaceStringTemplate": "version: {{{newValue}}}\nurl: https://gitlab.com/api/v4/projects/80424238/packages/generic/monkey-bubble/{{{newValue}}}/{{{urlSuffix}}}\nsha256: {{{newDigest}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update wmdock GitLab archive manifest (x-version, url, sha256)",
+      "managerFilePatterns": [
+        "/^flatpaks\/wmdock\/manifest\\.yaml$/"
+      ],
+      "matchStrings": [
+        "x-version:\\s*[\"']?(?<currentValue>[^\"'\\n]+)[\"']?(?:[^\\n]*\\n){0,80}\\s*url:\\s*https://gitlab\\.com/cschalle/wmdock/-/archive/v[^\\s/]+/wmdock-v[^\\s/]+\\.tar\\.gz\\n\\s*sha256:\\s*(?<currentDigest>[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "gitlab-tags",
+      "depNameTemplate": "cschalle/wmdock",
+      "registryUrlTemplate": "https://gitlab.com",
+      "versioningTemplate": "semver-coerced",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "autoReplaceStringTemplate": "x-version: \"{{{newValue}}}\"\nurl: https://gitlab.com/cschalle/wmdock/-/archive/v{{{newValue}}}/wmdock-v{{{newValue}}}.tar.gz\nsha256: {{{newDigest}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update xmms-resuscitated build tags in release.yaml",
+      "managerFilePatterns": [
+        "/^flatpaks\/xmms-resuscitated\/release\\.yaml$/"
+      ],
+      "matchStrings": [
+        "version:\\s*(?<currentValue>build-[0-9]+)\\n(?:[^\\n]*\\n){0,8}url:\\s*https://gitlab\\.com/cschalle/xmms-resuscitated/-/jobs/artifacts/build-[0-9]+/raw/(?<urlSuffix>[^\\n]+)\\nsha256:\\s*(?<currentDigest>[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "gitlab-tags",
+      "depNameTemplate": "cschalle/xmms-resuscitated",
+      "registryUrlTemplate": "https://gitlab.com",
+      "versioningTemplate": "regex:^build-(?<major>\\d+)$",
+      "autoReplaceStringTemplate": "version: {{{newValue}}}\nurl: https://gitlab.com/cschalle/xmms-resuscitated/-/jobs/artifacts/{{{newValue}}}/raw/{{{urlSuffix}}}\nsha256: {{{newDigest}}}"
+    },
+    {
+      "customType": "regex",
       "description": "Update manifest.yaml GitHub archive tags: x-version, url, and sha256 (fields may be non-adjacent)",
       "managerFilePatterns": [
         "/^flatpaks/[^/]+/manifest\\.yaml$/"
