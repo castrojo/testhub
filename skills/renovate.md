@@ -124,6 +124,26 @@ url:\s*...
 If new `release.yaml` apps are added with more than 5 intervening lines between `version:`
 and `url:`, increase the bound and verify with a Python test.
 
+### Current coverage reality (verified)
+
+Do not assume every app is covered by Renovate. As of this repo state, Renovate tracks only:
+
+- `flatpaks/goose/release.yaml` (`github-releases`)
+- `flatpaks/ghostty/manifest.yaml` (`github-tags`)
+- `flatpaks/rancher-desktop/manifest.yaml` (`github-releases` asset pattern)
+
+Everything else is currently untracked by regex managers because they use non-GitHub sources,
+git commit/tag pins, rolling nightly URLs, or non-semver identifiers in `version`.
+
+### Why many apps are intentionally untracked
+
+- `firefox-nightly`, `thunderbird-nightly` use fixed nightly channel URLs and rotating tarball content at same URL; handled by `.github/workflows/update-mozilla-nightly.yml`
+- `lmstudio`, `dell-webcam-control`, `redhat-planet`, `monkey-bubble`, `xmms-resuscitated`, `wmdock`, `elgato-light` are GitLab/CDN patterns not covered by current regex managers
+- `io.github.DenysMb.Kontainer`, `org.altlinux.Tuner`, `saturn`, `virtualbox` mostly pin git tags/commits or non-GitHub upstreams outside current Renovate regex scope
+
+When adding coverage for a new source pattern, add a separate custom manager per pattern and
+verify with a local regex match script against all `flatpaks/*/{manifest,release}.yaml` files.
+
 ### autoReplaceStringTemplate fragility
 
 The multiline `matchString` spanning `x-version` through `sha256` makes reconstruction

@@ -63,17 +63,31 @@
     },
     {
       "customType": "regex",
-      "description": "Update manifest.yaml flatpak-builder packages: x-version, GitHub archive url, and sha256 fields",
+      "description": "Update manifest.yaml GitHub archive tags: x-version, url, and sha256 (fields may be non-adjacent)",
       "managerFilePatterns": [
         "/^flatpaks/[^/]+/manifest\\.yaml$/"
       ],
       "matchStrings": [
-        "x-version:\\s*\"(?<currentValue>[^\"]+)\"\\n\\s*url:\\s*https://github\\.com/(?<depName>[^/]+/[^/]+)/archive/refs/tags/v[^\\s/]+\\.tar\\.gz\\n\\s*sha256:\\s*(?<currentDigest>[0-9a-f]{64})"
+        "x-version:\\s*[\"']?(?<currentValue>[^\"'\\n]+)[\"']?(?:[^\\n]*\\n){0,120}\\s*url:\\s*(?<urlPrefix>https://github\\.com/(?<depName>[^/]+/[^/]+)/archive/refs/tags/v)[^\\s/]+(?<urlSuffix>\\.tar\\.gz)\\n\\s*sha256:\\s*(?<currentDigest>[0-9a-f]{64})"
       ],
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver-coerced",
       "extractVersionTemplate": "^v?(?<version>.*)$",
-      "autoReplaceStringTemplate": "x-version: \"{{{newValue}}}\"\nurl: https://github.com/{{{depName}}}/archive/refs/tags/v{{{newValue}}}.tar.gz\nsha256: {{{newDigest}}}"
+      "autoReplaceStringTemplate": "x-version: \"{{{newValue}}}\"\nurl: {{{urlPrefix}}}{{{newValue}}}{{{urlSuffix}}}\nsha256: {{{newDigest}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update manifest.yaml GitHub release assets with versioned filenames (x-version, url, sha256)",
+      "managerFilePatterns": [
+        "/^flatpaks/[^/]+/manifest\\.yaml$/"
+      ],
+      "matchStrings": [
+        "x-version:\\s*[\"']?(?<currentValue>[^\"'\\n]+)[\"']?(?:[^\\n]*\\n){0,120}\\s*url:\\s*(?<urlPrefix>https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/v)[^/\\n]+/(?<filenamePrefix>[^\\n]*?)v[^/\\n]+(?<filenameSuffix>\\.[^\\n]+)\\n\\s*sha256:\\s*(?<currentDigest>[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "autoReplaceStringTemplate": "x-version: \"{{{newValue}}}\"\nurl: {{{urlPrefix}}}{{{newValue}}}/{{{filenamePrefix}}}v{{{newValue}}}{{{filenameSuffix}}}\nsha256: {{{newDigest}}}"
     },
     {
       "customType": "regex",
