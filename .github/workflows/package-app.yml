@@ -1,0 +1,403 @@
+name: Package new app
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_url:
+        description: 'GitHub repo URL (https://github.com/owner/app)'
+        required: true
+      app_id:
+        description: 'Flatpak app-id (io.github.owner.App)'
+        required: true
+      version:
+        description: 'Version tag (e.g. v1.3.0) — leave blank for latest'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    env:
+      UPSTREAM_URL: ${{ inputs.upstream_url }}
+      APP_ID: ${{ inputs.app_id }}
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Phase 1 + 2 — Research and generate files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER_REPO=$(echo "$UPSTREAM_URL" | sed -E 's|https://github.com/||; s|/$||')
+          if [[ -z "${OWNER_REPO}" || "${OWNER_REPO}" != */* ]]; then
+            echo "Invalid upstream URL: ${UPSTREAM_URL}" >&2
+            exit 1
+          fi
+
+          REPO_META=$(gh api "repos/${OWNER_REPO}")
+          REPO_DESC=$(echo "$REPO_META" | jq -r '.description // ""')
+          REPO_NAME=$(echo "$REPO_META" | jq -r '.name')
+          REPO_LICENSE=$(echo "$REPO_META" | jq -r '.license.spdx_id // "NOASSERTION"')
+          REPO_HOMEPAGE=$(echo "$REPO_META" | jq -r '.homepage // ""')
+
+          if [ -z "$VERSION" ]; then
+            RELEASE=$(gh api "repos/${OWNER_REPO}/releases/latest")
+          else
+            RELEASE=$(gh api "repos/${OWNER_REPO}/releases/tags/${VERSION}")
+          fi
+
+          TAG=$(echo "$RELEASE" | jq -r '.tag_name')
+          CLEAN_VERSION="${TAG#v}"
+          RELEASE_DATE=$(echo "$RELEASE" | jq -r '.published_at[:10]')
+          ASSETS=$(echo "$RELEASE" | jq -r '.assets[].browser_download_url')
+
+          X86_URL=$(echo "$ASSETS" | grep -iE 'linux.*x86_64.*\.(AppImage|tar\.gz)|x86_64.*linux.*\.(AppImage|tar\.gz)' | head -1 || true)
+          [ -z "$X86_URL" ] && X86_URL=$(echo "$ASSETS" | grep -iE 'linux.*\.(AppImage|tar\.gz)' | head -1 || true)
+          if [[ -z "${X86_URL}" ]]; then
+            echo "Unable to find Linux x86_64 AppImage or tar.gz release asset for ${OWNER_REPO}" >&2
+            exit 1
+          fi
+
+          AARCH64_URL=$(echo "$ASSETS" | grep -iE 'linux.*(aarch64|arm64).*\.(AppImage|tar\.gz)|(aarch64|arm64).*linux.*\.(AppImage|tar\.gz)' | head -1 || true)
+          X86_SHA=$(curl -sL "$X86_URL" | sha256sum | cut -d' ' -f1)
+          AARCH64_SHA=""
+          if [[ -n "${AARCH64_URL}" ]]; then
+            AARCH64_SHA=$(curl -sL "$AARCH64_URL" | sha256sum | cut -d' ' -f1)
+          fi
+
+          IS_APPIMAGE=$(echo "$X86_URL" | grep -qi 'AppImage' && echo true || echo false)
+          IS_ELECTRON=$(echo "$X86_URL" | grep -qi 'AppImage' && echo true || echo false)
+
+          APP_DIR="flatpaks/${APP_ID}"
+          mkdir -p "${APP_DIR}"
+
+          APP_NAME=$(echo "$REPO_META" | jq -r '.name // empty')
+          if [[ -z "${APP_NAME}" || "${APP_NAME}" == "null" ]]; then
+            APP_NAME="${APP_ID##*.}"
+          fi
+
+          SUMMARY="${REPO_DESC}"
+          if [[ -z "${SUMMARY}" || "${SUMMARY}" == "null" ]]; then
+            SUMMARY="Packaged application from ${OWNER_REPO}"
+          fi
+
+          COMMAND=$(echo "${APP_NAME}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+          if [[ -z "${COMMAND}" ]]; then
+            COMMAND=$(echo "${APP_ID##*.}" | tr '[:upper:]' '[:lower:]')
+          fi
+
+          CATEGORIES="Utility;"
+          if echo "${SUMMARY} ${REPO_NAME}" | grep -qiE 'browser|web'; then
+            CATEGORIES="Network;WebBrowser;"
+          elif echo "${SUMMARY} ${REPO_NAME}" | grep -qiE 'editor|code|ide|develop|program'; then
+            CATEGORIES="Development;Utility;"
+          elif echo "${SUMMARY} ${REPO_NAME}" | grep -qiE 'video|image|photo|media|music|audio'; then
+            CATEGORIES="AudioVideo;Graphics;"
+          elif echo "${SUMMARY} ${REPO_NAME}" | grep -qiE 'game'; then
+            CATEGORIES="Game;"
+          fi
+
+          FINISH_ARGS=$(cat <<'EOF'
+            - --share=network
+            - --share=ipc
+            - --socket=wayland
+            - --socket=fallback-x11
+            - --device=dri
+            - --talk-name=org.freedesktop.Notifications
+          EOF
+          )
+
+          ESCAPED_APP_ID=$(printf '%s' "$APP_ID" | sed 's/[.[\*^$()+?{|]/\\&/g')
+          APPIMAGE_X86_FILE=$(basename "$X86_URL")
+          X86_EXT="tar.gz"
+          [[ "$APPIMAGE_X86_FILE" == *.AppImage ]] && X86_EXT="AppImage"
+          APPIMAGE_AARCH_FILE=""
+          if [[ -n "${AARCH64_URL}" ]]; then
+            APPIMAGE_AARCH_FILE=$(basename "$AARCH64_URL")
+          fi
+
+          ICON_URL=$(echo "$ASSETS" | grep -iE '\.(png|svg)$' | head -1 || true)
+          if [[ -n "${ICON_URL}" ]]; then
+            ICON_EXT="${ICON_URL##*.}"
+            curl -fsSL "${ICON_URL}" -o "${APP_DIR}/${APP_ID}.${ICON_EXT}" || true
+          fi
+          if [[ -f "${APP_DIR}/${APP_ID}.png" ]]; then
+            ICON_FILE="${APP_ID}.png"
+          elif [[ -f "${APP_DIR}/${APP_ID}.svg" ]]; then
+            ICON_FILE="${APP_ID}.svg"
+          else
+            ICON_FILE="${APP_ID}.svg"
+            cat > "${APP_DIR}/${ICON_FILE}" <<EOF
+          # Generated by package-app workflow
+          <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="48" fill="#1f2937"/>
+            <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
+                  font-family="sans-serif" font-size="38" fill="#f9fafb">${APP_ID##*.}</text>
+          </svg>
+          EOF
+          fi
+
+          cat > "${APP_DIR}/${APP_ID}.desktop" <<EOF
+          # Generated by package-app workflow
+          [Desktop Entry]
+          Type=Application
+          Name=${APP_NAME}
+          Exec=${COMMAND} %U
+          Icon=${APP_ID}
+          Terminal=false
+          Categories=${CATEGORIES}
+          StartupNotify=true
+          StartupWMClass=${APP_NAME}
+          EOF
+
+          cat > "${APP_DIR}/${APP_ID}.metainfo.xml" <<EOF
+          <!-- Generated by package-app workflow -->
+          <component type="desktop-application">
+            <id>${APP_ID}</id>
+            <metadata_license>CC0-1.0</metadata_license>
+            <project_license>${REPO_LICENSE}</project_license>
+            <name>${APP_NAME}</name>
+            <summary>${SUMMARY}</summary>
+            <description>
+              <p>${SUMMARY}</p>
+              <p>This package is generated from the upstream release artifacts.</p>
+            </description>
+            <url type="homepage">${REPO_HOMEPAGE:-${UPSTREAM_URL}}</url>
+            <url type="bugtracker">${UPSTREAM_URL}/issues</url>
+            <launchable type="desktop-id">${APP_ID}.desktop</launchable>
+            <categories>
+              <category>Utility</category>
+            </categories>
+            <releases>
+              <release version="${CLEAN_VERSION}" date="${RELEASE_DATE}"/>
+            </releases>
+            <content_rating type="oars-1.1"/>
+          </component>
+          EOF
+
+          cat > "${APP_DIR}/exceptions.json" <<EOF
+          {
+            "_generated_by": "package-app workflow",
+            "${APP_ID}": [
+              "metainfo-missing-screenshots",
+              "appstream-missing-screenshots",
+              "appstream-screenshots-not-mirrored-in-ostree",
+              "appid-filename-mismatch",
+              "appstream-no-flathub-manifest-key",
+              "finish-args-portal-talk-name",
+              "elf-arch-multiple-found"
+            ]
+          }
+          EOF
+
+          if [[ "${AARCH64_URL}" != "" ]]; then
+            X_ARCHES="x-arches: [x86_64, aarch64]"
+            MODULE_ONLY_ARCHES=""
+          else
+            X_ARCHES="x-arches: [x86_64]"
+            MODULE_ONLY_ARCHES="    only-arches: [x86_64]"
+          fi
+
+          if [[ "${IS_ELECTRON}" == "true" && "${IS_APPIMAGE}" == "true" ]]; then
+            cat > "${APP_DIR}/${APP_ID}.zypak-wrapper.sh" <<EOF
+          #!/bin/sh
+          exec zypak-wrapper /app/${COMMAND}/AppRun "\$@"
+          EOF
+            chmod +x "${APP_DIR}/${APP_ID}.zypak-wrapper.sh"
+
+            cat > "${APP_DIR}/manifest.yaml" <<EOF
+          # Generated by package-app workflow
+          app-id: ${APP_ID}
+          runtime: org.freedesktop.Platform
+          runtime-version: "24.08"
+          sdk: org.freedesktop.Sdk
+          base: org.electronjs.Electron2.BaseApp
+          base-version: "24.08"
+          default-branch: stable
+          x-version: "${CLEAN_VERSION}"
+          ${X_ARCHES}
+          x-chunkah-max-layers: "24"
+          x-skip-launch-check: true
+          x-skip-install-test: true
+          x-skip-chunkah: true
+          separate-locales: false
+          command: ${COMMAND}
+          finish-args:
+          ${FINISH_ARGS}
+          modules:
+            - name: ${COMMAND}
+              buildsystem: simple
+          ${MODULE_ONLY_ARCHES}
+              build-commands:
+                - install -d /app/${COMMAND}
+                - |
+                  if [ -f "${APPIMAGE_X86_FILE}" ]; then
+                    APPIMAGE="${APPIMAGE_X86_FILE}"
+                  elif [ -n "${APPIMAGE_AARCH_FILE}" ] && [ -f "${APPIMAGE_AARCH_FILE}" ]; then
+                    APPIMAGE="${APPIMAGE_AARCH_FILE}"
+                  else
+                    echo "No AppImage file found" >&2
+                    exit 1
+                  fi
+                - chmod +x "\${APPIMAGE}"
+                - ./"\${APPIMAGE}" --appimage-extract
+                - mv squashfs-root/* /app/${COMMAND}/
+                - install -Dm755 ${APP_ID}.zypak-wrapper.sh /app/bin/${COMMAND}
+                - install -Dm644 ${APP_ID}.desktop /app/share/applications/${APP_ID}.desktop
+                - install -Dm644 ${APP_ID}.metainfo.xml /app/share/metainfo/${APP_ID}.metainfo.xml
+                - install -Dm644 ${ICON_FILE} /app/share/icons/hicolor/scalable/apps/${APP_ID}.${ICON_FILE##*.}
+              sources:
+                - type: file
+                  url: ${X86_URL}
+                  sha256: ${X86_SHA}
+                  dest-filename: ${APPIMAGE_X86_FILE}
+                  only-arches: [x86_64]
+          EOF
+            if [[ -n "${AARCH64_URL}" ]]; then
+              cat >> "${APP_DIR}/manifest.yaml" <<EOF
+                - type: file
+                  url: ${AARCH64_URL}
+                  sha256: ${AARCH64_SHA}
+                  dest-filename: ${APPIMAGE_AARCH_FILE}
+                  only-arches: [aarch64]
+          EOF
+            fi
+            cat >> "${APP_DIR}/manifest.yaml" <<EOF
+                - type: file
+                  path: ${APP_ID}.desktop
+                - type: file
+                  path: ${APP_ID}.metainfo.xml
+                - type: file
+                  path: ${APP_ID}.zypak-wrapper.sh
+                - type: file
+                  path: ${ICON_FILE}
+          EOF
+          else
+            SOURCE_TYPE="archive"
+            [[ "${X86_EXT}" == "AppImage" ]] && SOURCE_TYPE="file"
+            cat > "${APP_DIR}/manifest.yaml" <<EOF
+          # Generated by package-app workflow
+          app-id: ${APP_ID}
+          runtime: org.gnome.Platform
+          runtime-version: "49"
+          sdk: org.gnome.Sdk
+          default-branch: stable
+          x-version: "${CLEAN_VERSION}"
+          ${X_ARCHES}
+          x-skip-launch-check: true
+          x-skip-install-test: true
+          x-skip-chunkah: true
+          command: ${COMMAND}
+          finish-args:
+          ${FINISH_ARGS}
+          modules:
+            - name: ${COMMAND}
+              buildsystem: simple
+          ${MODULE_ONLY_ARCHES}
+              build-commands:
+                - install -d /app/${COMMAND}
+                - tar xf ${APPIMAGE_X86_FILE} -C /app/${COMMAND} || cp -a . /app/${COMMAND}
+                - install -Dm644 ${APP_ID}.desktop /app/share/applications/${APP_ID}.desktop
+                - install -Dm644 ${APP_ID}.metainfo.xml /app/share/metainfo/${APP_ID}.metainfo.xml
+                - install -Dm644 ${ICON_FILE} /app/share/icons/hicolor/scalable/apps/${APP_ID}.${ICON_FILE##*.}
+                - install -d /app/bin
+                - printf '#!/bin/sh\nexec /app/${COMMAND}/${COMMAND} "\$@"\n' > /app/bin/${COMMAND}
+                - chmod 755 /app/bin/${COMMAND}
+              sources:
+                - type: ${SOURCE_TYPE}
+                  url: ${X86_URL}
+                  sha256: ${X86_SHA}
+                  dest-filename: ${APPIMAGE_X86_FILE}
+                  only-arches: [x86_64]
+          EOF
+            if [[ -n "${AARCH64_URL}" ]]; then
+              cat >> "${APP_DIR}/manifest.yaml" <<EOF
+                - type: ${SOURCE_TYPE}
+                  url: ${AARCH64_URL}
+                  sha256: ${AARCH64_SHA}
+                  dest-filename: ${APPIMAGE_AARCH_FILE}
+                  only-arches: [aarch64]
+          EOF
+            fi
+            cat >> "${APP_DIR}/manifest.yaml" <<EOF
+                - type: file
+                  path: ${APP_ID}.desktop
+                - type: file
+                  path: ${APP_ID}.metainfo.xml
+                - type: file
+                  path: ${ICON_FILE}
+          EOF
+          fi
+
+          RENOVATE_TMP=$(mktemp)
+          jq \
+            --arg app_id "${APP_ID}" \
+            --arg owner_repo "${OWNER_REPO}" \
+            --arg escaped_app_id "${ESCAPED_APP_ID}" \
+            '
+            .customManagers += [
+              {
+                customType: "regex",
+                description: ("Update " + $app_id + " manifest x-version field"),
+                managerFilePatterns: [("/^flatpaks\\/" + $escaped_app_id + "\\/manifest\\.yaml$/")],
+                matchStrings: [
+                  "x-version:\\s*\"?(?<currentValue>[^\"\\n]+)\"?"
+                ],
+                datasourceTemplate: "github-releases",
+                depNameTemplate: $owner_repo,
+                versioningTemplate: "semver-coerced",
+                extractVersionTemplate: "^v?(?<version>.*)$",
+                autoReplaceStringTemplate: "x-version: \"{{{newValue}}}\""
+              }
+            ]
+            ' .github/renovate.json > "${RENOVATE_TMP}"
+          mv "${RENOVATE_TMP}" .github/renovate.json
+
+          find "${APP_DIR}" -maxdepth 1 -type f | sort
+
+      - name: Phase 3 — Commit, push, and open draft PR
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BRANCH="package/${APP_ID}"
+          git checkout -b "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "flatpaks/${APP_ID}/" ".github/renovate.json"
+          if git diff --cached --quiet; then
+            echo "No changes generated; nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "feat(${APP_ID}): add Flatpak packaging [automated]"
+          git push origin "$BRANCH"
+
+          PR_TITLE="feat(${APP_ID}): add Flatpak packaging"
+          PR_BODY=$(cat <<EOF
+          Automated packaging generated by workflow_dispatch.
+
+          - Upstream: ${UPSTREAM_URL}
+          - App ID: ${APP_ID}
+          - Version: ${VERSION:-latest}
+          EOF
+          )
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [[ -n "${EXISTING_PR}" ]]; then
+            echo "Draft PR already exists: #${EXISTING_PR}"
+          else
+            gh pr create --title "$PR_TITLE" --body "$PR_BODY" --draft --head "$BRANCH" --base main
+          fi
