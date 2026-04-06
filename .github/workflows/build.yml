@@ -1,9 +1,11 @@
 # CI environment reference
 # ─────────────────────────────────────────────────────────────────────────────
-# compile-oci runs INSIDE gnome-50 container:
-#   ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+# compile-oci runs INSIDE freedesktop-25.08 container (published by flathub-infra):
+#   ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+#   Source: https://github.com/flathub-infra/flatpak-github-actions
 #   Has: flatpak-builder, yq (after install-tools-yq), python3, ostree,
 #        buildah, flatpak-builder-lint, flatpak, skopeo, just (after install)
+#   Digest pinned for reproducibility; Renovate tracks tag updates.
 #
 # sign-and-push, publish-manifest-list, annotate-packages run on BARE ubuntu-24.04:
 #   Has: podman+buildah (via Homebrew/install-tools-podman), cosign (via action),
@@ -76,7 +78,7 @@ jobs:
             echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── Build flatpak inside gnome-50 container ────────────────────────────────
+  # ── Build flatpak inside freedesktop-25.08 container ──────────────────────
   compile-oci:
     needs: diff-changed-apps
     if: needs.diff-changed-apps.outputs.apps != '[]' && needs.diff-changed-apps.outputs.apps != ''
@@ -95,7 +97,7 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08@sha256:6842ca6515512eb02a90dcf80d24192323bef6babf6dc6248812854eaff644c8 # flatpak-builder from freedesktopsdk/sdk:25.08 (updated 2026-04-03)
       options: --privileged
     # SOURCE_DATE_EPOCH=0: normalises tar timestamps so OCI blob hashes are deterministic
     # across identical-content builds. build-bundle reads this env directly.
@@ -151,7 +153,7 @@ jobs:
       - name: Lint Flatpak manifest
         if: steps.detect-path.outputs.mode == 'flatpak-builder' && steps.detect-path.outputs.skip != 'true'
         run: |
-          # flatpak-builder-lint is available directly in the gnome-50 container at /app/bin/flatpak-builder-lint
+          # flatpak-builder-lint is available directly in the freedesktop-25.08 container at /app/bin/flatpak-builder-lint
           # Runs before the build to catch manifest issues early. Fails the job on errors.
           EXCEPTIONS_FILE="flatpaks/${{ matrix.app }}/exceptions.json"
           if [ -f "${EXCEPTIONS_FILE}" ]; then
