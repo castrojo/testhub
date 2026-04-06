@@ -3,6 +3,11 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     just --list
 
+# Research a GitHub release and scaffold a new app manifest
+# Usage: just new-app <github-url> <app-id> [version]
+new-app url app-id version="latest":
+    @scripts/new-app.sh "{{ url }}" "{{ app-id }}" "{{ version }}"
+
 # === Configuration ===
 container_image := "ghcr.io/flathub-infra/flatpak-github-actions:gnome-49"
 local_registry := "localhost:5000"
