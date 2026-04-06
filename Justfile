@@ -115,15 +115,30 @@ metadata app key:
 _skip-arch app arch:
     #!/usr/bin/env bash
     set -euo pipefail
-    ARCHES=$(just metadata "{{ app }}" arches 2>/dev/null || echo "")
-    if test -z "$ARCHES"; then
-        # No arch restriction — build on all arches
+    APP="{{ app }}"
+    if test -d "flatpaks/$APP"; then
+        DIR="flatpaks/$APP"
+    else
+        DIR=$(find flatpaks -maxdepth 2 \( -name "manifest.yaml" -o -name "release.yaml" \) -exec grep -lF -e "app-id: $APP" -e "id: $APP" {} \; | head -1 | xargs dirname 2>/dev/null || echo "")
+        if test -z "$DIR"; then
+            # App metadata not found — do not skip by arch
+            echo "false"
+            exit 0
+        fi
+    fi
+
+    if test -f "$DIR/release.yaml"; then
+        FILE="$DIR/release.yaml"
+    elif test -f "$DIR/manifest.yaml"; then
+        FILE="$DIR/manifest.yaml"
+    else
+        # No manifest/release file — do not skip by arch
         echo "false"
         exit 0
     fi
-    # Normalize: strip brackets, quotes, and whitespace; split on comma/space
-    ARCH="{{ arch }}"
-    if echo "$ARCHES" | tr ',[]\n' ' ' | tr -s ' ' | grep -qw "$ARCH"; then
+
+    FOUND=$(yq e ".x-arches // .arches // [] | map(select(. == \"{{ arch }}\")) | length" "$FILE" 2>/dev/null || echo "0")
+    if [ "$FOUND" -gt "0" ]; then
         echo "false"
     else
         echo "true"
