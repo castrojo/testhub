@@ -190,6 +190,19 @@
       "depNameTemplate": "oras-project/oras",
       "versioningTemplate": "semver-coerced",
       "extractVersionTemplate": "^v?(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Update flathub-infra CI container image tag and digest in build.yml",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/build\\.yml$/"
+      ],
+      "matchStrings": [
+        "image: ghcr\\.io/flathub-infra/flatpak-github-actions:(?<currentValue>[a-z0-9._-]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "depNameTemplate": "ghcr.io/flathub-infra/flatpak-github-actions",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "loose"
     }
   ]
 }
