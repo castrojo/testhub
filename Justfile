@@ -72,25 +72,27 @@ install-tools: install-tools-yq install-tools-podman install-tools-oras
 
 # === Metadata helpers ===
 
+# Locate the flatpak directory for APP. Prints dir path; empty string if not found.
+_find-app-dir app:
+    #!/usr/bin/env bash
+    APP="{{ app }}"
+    if test -d "flatpaks/$APP"; then
+        echo "flatpaks/$APP"
+    else
+        find flatpaks -maxdepth 2 \( -name "manifest.yaml" -o -name "release.yaml" \) \
+            -exec grep -lF -e "app-id: $APP" -e "id: $APP" {} \; | head -1 | xargs dirname 2>/dev/null || echo ""
+    fi
+
 # Read a metadata key for an app. Usage: just metadata APP KEY
 # Handles both release.yaml and manifest.yaml with x-prefix variants.
 metadata app key:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app }}"
+    DIR="$(just _find-app-dir '{{ app }}')"
     KEY="{{ key }}"
-
-    # Look in flatpaks/<APP>/ — support both app-id-based dirs and short names
-    # First try exact directory match, then search by app-id
-    if test -d "flatpaks/$APP"; then
-        DIR="flatpaks/$APP"
-    else
-        # Search for a dir containing the app-id
-        DIR=$(find flatpaks -maxdepth 2 \( -name "manifest.yaml" -o -name "release.yaml" \) -exec grep -lF -e "app-id: $APP" -e "id: $APP" {} \; | head -1 | xargs dirname 2>/dev/null || echo "")
-        if test -z "$DIR"; then
-            echo ""
-            exit 0
-        fi
+    if test -z "$DIR"; then
+        echo ""
+        exit 0
     fi
 
     if test -f "$DIR/release.yaml"; then
@@ -115,16 +117,11 @@ metadata app key:
 _skip-arch app arch:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app }}"
-    if test -d "flatpaks/$APP"; then
-        DIR="flatpaks/$APP"
-    else
-        DIR=$(find flatpaks -maxdepth 2 \( -name "manifest.yaml" -o -name "release.yaml" \) -exec grep -lF -e "app-id: $APP" -e "id: $APP" {} \; | head -1 | xargs dirname 2>/dev/null || echo "")
-        if test -z "$DIR"; then
-            # App metadata not found — do not skip by arch
-            echo "false"
-            exit 0
-        fi
+    DIR="$(just _find-app-dir '{{ app }}')"
+    if test -z "$DIR"; then
+        # App metadata not found — do not skip by arch
+        echo "false"
+        exit 0
     fi
 
     if test -f "$DIR/release.yaml"; then
@@ -137,7 +134,13 @@ _skip-arch app arch:
         exit 0
     fi
 
-    FOUND=$(yq e ".x-arches // .arches // [] | map(select(. == \"{{ arch }}\")) | length" "$FILE" 2>/dev/null || echo "0")
+    TOTAL=$(yq e ".x-arches // .arches // [] | length" "$FILE" 2>/dev/null || echo "0")
+    if [ "$TOTAL" -eq "0" ]; then
+        # No arch restriction declared — build on all arches
+        echo "false"
+        exit 0
+    fi
+    FOUND=$(yq e ".x-arches // .arches | map(select(. == \"{{ arch }}\")) | length" "$FILE" 2>/dev/null || echo "0")
     if [ "$FOUND" -gt "0" ]; then
         echo "false"
     else
