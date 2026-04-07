@@ -61,17 +61,20 @@ jobs:
       - name: Detect changed apps
         id: detect
         run: |
+          has_manifest() { [[ -f "flatpaks/$1/manifest.yaml" || -f "flatpaks/$1/release.yaml" ]]; }
           if [[ -n "${{ inputs.app }}" ]]; then
             echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
           elif git rev-parse HEAD~1 >/dev/null 2>&1; then
             APPS=$(git diff --name-only HEAD~1 HEAD -- 'flatpaks/' \
               | cut -d/ -f2 | sort -u \
+              | while IFS= read -r d; do has_manifest "$d" && echo "$d"; done \
               | jq -Rnc '[inputs | select(length > 0)]')
             echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
           else
             # First commit or shallow clone — treat all flatpak dirs as changed
             APPS=$(ls -d flatpaks/*/ 2>/dev/null \
               | xargs -I{} basename {} \
+              | while IFS= read -r d; do has_manifest "$d" && echo "$d"; done \
               | jq -Rnc '[inputs | select(length > 0)]')
             echo "apps=${APPS}" >> "$GITHUB_OUTPUT"
           fi
