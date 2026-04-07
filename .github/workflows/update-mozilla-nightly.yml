@@ -21,10 +21,17 @@ jobs:
 
       - name: Download latest Mozilla nightly tarballs
         run: |
-          FF_X86_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-x86_64.tar.xz"
-          FF_ARM_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-150.0a1.en-US.linux-aarch64.tar.xz"
+          FF_VERSION=$(curl -sf https://product-details.mozilla.org/1.0/firefox_versions.json \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['FIREFOX_NIGHTLY'])")
+          TB_VERSION=$(curl -sf https://product-details.mozilla.org/1.0/thunderbird_versions.json \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['LATEST_THUNDERBIRD_NIGHTLY_VERSION'])")
+          echo "FF_VERSION=${FF_VERSION}" >> "$GITHUB_ENV"
+          echo "TB_VERSION=${TB_VERSION}" >> "$GITHUB_ENV"
+
+          FF_X86_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-${FF_VERSION}.en-US.linux-x86_64.tar.xz"
+          FF_ARM_URL="https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-${FF_VERSION}.en-US.linux-aarch64.tar.xz"
           # Use ftp.mozilla.org (not CDN) — CDN caused HTTP/2 stream errors (exit code 92).
-          TB_X86_URL="https://ftp.mozilla.org/pub/thunderbird/nightly/latest-comm-central/thunderbird-150.0a1.en-US.linux-x86_64.tar.xz"
+          TB_X86_URL="https://ftp.mozilla.org/pub/thunderbird/nightly/latest-comm-central/thunderbird-${TB_VERSION}.en-US.linux-x86_64.tar.xz"
 
           download() {
             local name="$1" url="$2"
@@ -42,17 +49,22 @@ jobs:
       - name: Update firefox-nightly x86_64 sha256
         run: |
           NEW=$(sha256sum /tmp/ff_x86.tar.xz | cut -d' ' -f1)
-          sed -i "/url:.*firefox-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
+          sed -i "s|url:.*firefox.*linux-x86_64\.tar\.xz|url: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-${{ env.FF_VERSION }}.en-US.linux-x86_64.tar.xz|" flatpaks/firefox-nightly/manifest.yaml
+          sed -i "/url:.*linux-x86_64\.tar\.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
+          sed -i "s/^x-version: .*/x-version: \"${{ env.FF_VERSION }}\"/" flatpaks/firefox-nightly/manifest.yaml
 
       - name: Update firefox-nightly aarch64 sha256
         run: |
           NEW=$(sha256sum /tmp/ff_arm.tar.xz | cut -d' ' -f1)
-          sed -i "/url:.*firefox-150.0a1.en-US.linux-aarch64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
+          sed -i "s|url:.*firefox.*linux-aarch64\.tar\.xz|url: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-${{ env.FF_VERSION }}.en-US.linux-aarch64.tar.xz|" flatpaks/firefox-nightly/manifest.yaml
+          sed -i "/url:.*linux-aarch64\.tar\.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/firefox-nightly/manifest.yaml
 
       - name: Update thunderbird-nightly x86_64 sha256
         run: |
           NEW=$(sha256sum /tmp/tb_x86.tar.xz | cut -d' ' -f1)
-          sed -i "/url:.*thunderbird-150.0a1.en-US.linux-x86_64.tar.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/thunderbird-nightly/manifest.yaml
+          sed -i "s|url:.*thunderbird.*linux-x86_64\.tar\.xz|url: https://ftp.mozilla.org/pub/thunderbird/nightly/latest-comm-central/thunderbird-${{ env.TB_VERSION }}.en-US.linux-x86_64.tar.xz|" flatpaks/thunderbird-nightly/manifest.yaml
+          sed -i "/url:.*thunderbird.*linux-x86_64\.tar\.xz/{n;s/sha256:.*/sha256: $NEW/}" flatpaks/thunderbird-nightly/manifest.yaml
+          sed -i "s/^x-version: .*/x-version: \"${{ env.TB_VERSION }}\"/" flatpaks/thunderbird-nightly/manifest.yaml
 
       - name: Commit and push sha256 updates to main
         env:
