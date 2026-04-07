@@ -45,8 +45,9 @@ fi
 
 echo "==> Fetching release data from ${owner}/${repo} (${version})" >&2
 
-tag_name="$(gh api "$endpoint" --jq '.tag_name // ""')"
-published_at="$(gh api "$endpoint" --jq '.published_at // .created_at // ""' | cut -dT -f1)"
+release_json="$(gh api "$endpoint")"
+tag_name="$(echo "$release_json" | jq -r '.tag_name // ""')"
+published_at="$(echo "$release_json" | jq -r '.published_at // .created_at // ""' | cut -dT -f1)"
 
 if [[ -z "$tag_name" || "$tag_name" == "null" ]]; then
     echo "ERROR: release tag_name is missing" >&2
@@ -66,7 +67,7 @@ while IFS=$'\t' read -r name url; do
         asset_names+=("$name")
         asset_urls+=("$url")
     fi
-done < <(gh api "$endpoint" --jq '.assets[]? | [.name, .browser_download_url] | @tsv')
+done < <(echo "$release_json" | jq -r '.assets[]? | [.name, .browser_download_url] | @tsv')
 
 if [[ "${#asset_names[@]}" -eq 0 ]]; then
     echo "ERROR: no Linux AppImage/.tar.gz assets found in release ${tag_name}" >&2
@@ -172,7 +173,7 @@ modules:
       - type: script
         dest-filename: ${command_name}
         commands:
-          - exec zypak-wrapper /app/${command_name}/${command_name} "\$@"
+          - exec zypak-wrapper /app/${command_name}/YOUR_BINARY_NAME "\$@"  # TODO: verify binary name inside extracted AppImage
       - type: file
         path: ${app_id}.metainfo.xml
       - type: file
